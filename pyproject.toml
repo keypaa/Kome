@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kome-assistant"
+version = "0.1.0"
+description = "Local-first smart clock assistant brain"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+kome = "kome_assistant.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
