@@ -46,3 +46,4 @@
 - `integrations/wake_word.py`: optional openWakeWord audio gate before STT.
 - CLI mode `--mode voice-sim` runs full voice orchestration path locally.
 - CLI mode `--mode voice-live` supports both manual and continuous microphone capture.
+- Live voice playback supports barge-in interruption using VAD monitoring during TTS.

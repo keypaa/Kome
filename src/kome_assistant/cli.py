@@ -8,7 +8,7 @@ from kome_assistant.core.orchestrator import AssistantOrchestrator
 from kome_assistant.core.router import IntentRouter
 from kome_assistant.core.voice_loop import VoiceLoop
 from kome_assistant.integrations.audio_input import MicrophoneAudioInput
-from kome_assistant.integrations.audio_output import NullAudioOutput, SimpleAudioOutput
+from kome_assistant.integrations.audio_output import NullAudioOutput, PlaybackHandle, SimpleAudioOutput
 from kome_assistant.integrations.factory import build_voice_backends
 from kome_assistant.integrations.wake_word import OpenWakeWordAudioDetector, PhraseWakeWordDetector
 from kome_assistant.tools.registry import default_tool_registry
@@ -68,6 +68,11 @@ def main() -> None:
         default="",
         help="Optional path to custom openWakeWord model",
     )
+    parser.add_argument(
+        "--no-barge-in",
+        action="store_true",
+        help="Disable interrupting TTS playback when user speech is detected",
+    )
     args = parser.parse_args()
 
     router = IntentRouter()
@@ -89,6 +94,7 @@ def main() -> None:
             wake_backend=args.wake_backend,
             wake_threshold=args.wake_threshold,
             openwakeword_model=args.openwakeword_model,
+            enable_barge_in=not args.no_barge_in,
         )
         return
 
@@ -183,6 +189,7 @@ def _run_voice_live_loop(
     wake_backend: str,
     wake_threshold: float,
     openwakeword_model: str,
+    enable_barge_in: bool,
 ) -> None:
     backends = build_voice_backends(profile)
     voice_loop = _build_voice_loop_with_wake_backend(
@@ -199,6 +206,8 @@ def _run_voice_live_loop(
     print(f"Kome local assistant (voice-live mode={live_mode}, profile={backends.selected_profile}).")
     if wake_word.strip():
         print(f"Wake-word required: {wake_word} (backend={wake_backend})")
+    if enable_barge_in:
+        print("Barge-in: enabled")
 
     if live_mode == "manual":
         print("Press Enter to capture one turn, or type 'exit' to quit.")
@@ -208,7 +217,7 @@ def _run_voice_live_loop(
             if action in {"exit", "quit"}:
                 print("bye")
                 break
-            if _run_single_live_turn(voice_loop, audio_in, audio_out, record_seconds):
+            if _run_single_live_turn(voice_loop, audio_in, audio_out, record_seconds, enable_barge_in=enable_barge_in):
                 turns += 1
             if max_turns and turns >= max_turns:
                 print("assistant> reached max turns")
@@ -223,7 +232,14 @@ def _run_voice_live_loop(
             sample_rate_hz=16000,
             max_turns=max_turns,
         ):
-            _run_single_live_turn(voice_loop, audio_in, audio_out, record_seconds, wav_audio=wav_audio)
+            _run_single_live_turn(
+                voice_loop,
+                audio_in,
+                audio_out,
+                record_seconds,
+                wav_audio=wav_audio,
+                enable_barge_in=enable_barge_in,
+            )
             turns += 1
             if max_turns and turns >= max_turns:
                 print("assistant> reached max turns")
@@ -238,6 +254,7 @@ def _run_single_live_turn(
     audio_out: SimpleAudioOutput,
     record_seconds: float,
     wav_audio: bytes | None = None,
+    enable_barge_in: bool = True,
 ) -> bool:
     try:
         wav_audio = wav_audio or audio_in.capture_wav(duration_s=record_seconds, sample_rate_hz=16000)
@@ -255,10 +272,57 @@ def _run_single_live_turn(
     print(f"stt> {outcome.result.user_text}")
     print(f"assistant> {outcome.result.assistant_text}")
     print(f"metrics> total={outcome.metrics.total_ms:.2f}ms")
-    played = audio_out.play_wav_bytes(outcome.result.synthesized_audio_bytes)
+    played = _play_assistant_audio(
+        wav_bytes=outcome.result.synthesized_audio_bytes,
+        audio_out=audio_out,
+        audio_in=audio_in,
+        voice_loop=voice_loop,
+        enable_barge_in=enable_barge_in,
+    )
     if not played:
         NullAudioOutput().play_wav_bytes(outcome.result.synthesized_audio_bytes)
         print("assistant> audio playback backend unavailable (install simpleaudio)")
+    return True
+
+
+def _play_assistant_audio(
+    wav_bytes: bytes,
+    audio_out: SimpleAudioOutput,
+    audio_in: MicrophoneAudioInput,
+    voice_loop: VoiceLoop,
+    enable_barge_in: bool,
+) -> bool:
+    handle = audio_out.play_wav_bytes_nonblocking(wav_bytes)
+    if handle is None:
+        return False
+
+    if not enable_barge_in:
+        handle.wait_done()
+        return True
+
+    return _play_with_barge_in(handle=handle, audio_in=audio_in, voice_loop=voice_loop)
+
+
+def _play_with_barge_in(
+    handle: PlaybackHandle,
+    audio_in: MicrophoneAudioInput,
+    voice_loop: VoiceLoop,
+    monitor_chunk_seconds: float = 0.20,
+) -> bool:
+    while handle.is_playing():
+        try:
+            monitor_wav = audio_in.capture_wav(duration_s=monitor_chunk_seconds, sample_rate_hz=16000)
+        except RuntimeError:
+            # If monitor capture fails, finish playback without barge-in.
+            handle.wait_done()
+            return True
+
+        if voice_loop.vad.has_speech(monitor_wav):
+            handle.stop()
+            print("assistant> playback interrupted (barge-in detected)")
+            return True
+
+    handle.wait_done()
     return True
 
 

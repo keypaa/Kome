@@ -105,6 +105,12 @@ Optional openWakeWord audio gate:
 kome --mode voice-live --voice-profile local --wake-word "ok kome" --wake-backend openwakeword --wake-threshold 0.5
 ```
 
+Disable barge-in interruption (default is enabled):
+
+```powershell
+kome --mode voice-live --no-barge-in
+```
+
 Manual capture mode (press Enter each turn):
 
 ```powershell
@@ -130,6 +136,7 @@ Notes:
 - If faster-whisper or Piper model/binary are not available, local profile falls back to mock adapters.
 - If microphone or playback optional dependencies are missing, voice-live mode reports a local setup error and exits safely.
 - If openwakeword is unavailable and `--wake-backend openwakeword` is requested, runtime falls back to phrase wake-word.
+- In voice-live mode, barge-in is enabled by default: user speech during playback interrupts TTS.
 
 Type a command in French or English.
 
@@ -160,6 +167,6 @@ git push -u origin main
 
 ## Next implementation goals
 
-- Add automatic barge-in and interruption handling during TTS playback
 - Replace basic microphone polling with lower-latency streaming audio chunks
 - Add wake-word backend alternatives (Porcupine/openWakeWord) with richer confidence logging
+- Add robust device arbitration for full-duplex capture/playback across different audio hardware
