@@ -34,6 +34,12 @@ Simulated voice pipeline mode:
 kome --mode voice-sim
 ```
 
+Latency benchmark mode:
+
+```bash
+kome --mode bench
+```
+
 Windows PowerShell:
 
 ```powershell
@@ -47,6 +53,18 @@ Simulated voice pipeline mode:
 
 ```powershell
 kome --mode voice-sim
+```
+
+Latency benchmark mode:
+
+```powershell
+kome --mode bench
+```
+
+Voice backend profile selection:
+
+```powershell
+kome --mode voice-sim --voice-profile local
 ```
 
 Type a command in French or English.
@@ -78,6 +96,6 @@ git push -u origin main
 
 ## Next implementation goals
 
-- Replace mock voice adapters with real wake-word + VAD + STT integrations
-- Replace mock TTS with Piper runtime and audio playback
-- Add benchmark harness for 2-4s latency targets
+- Replace local-profile mock STT with faster-whisper backend
+- Replace local-profile mock TTS with Piper runtime and audio playback
+- Integrate wake-word + streaming microphone capture
