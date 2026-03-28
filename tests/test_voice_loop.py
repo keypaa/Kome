@@ -6,8 +6,20 @@ from kome_assistant.core.voice_loop import VoiceLoop
 from kome_assistant.integrations.stt import MockSTTEngine
 from kome_assistant.integrations.tts import MockTTSEngine
 from kome_assistant.integrations.vad import MockVADEngine
-from kome_assistant.integrations.wake_word import PhraseWakeWordDetector
+from kome_assistant.integrations.wake_word import AudioWakeWordDecision, AudioWakeWordDetector, PhraseWakeWordDetector
 from kome_assistant.tools.registry import default_tool_registry
+
+
+class _AlwaysTriggeredAudioWakeDetector(AudioWakeWordDetector):
+    def evaluate_audio(self, wav_audio_bytes: bytes) -> AudioWakeWordDecision:
+        del wav_audio_bytes
+        return AudioWakeWordDecision(triggered=True, confidence=0.9)
+
+
+class _NeverTriggeredAudioWakeDetector(AudioWakeWordDetector):
+    def evaluate_audio(self, wav_audio_bytes: bytes) -> AudioWakeWordDecision:
+        del wav_audio_bytes
+        return AudioWakeWordDecision(triggered=False, confidence=0.1)
 
 
 def test_voice_loop_handles_timer_request(tmp_path: Path) -> None:
@@ -67,3 +79,39 @@ def test_voice_loop_requires_wake_word_when_configured(tmp_path: Path) -> None:
     assert blocked is None
     assert accepted is not None
     assert accepted.user_text == "mets un minuteur 2"
+
+
+def test_voice_loop_audio_wake_word_blocks_turn(tmp_path: Path) -> None:
+    orchestrator = AssistantOrchestrator(
+        router=IntentRouter(),
+        tools=default_tool_registry(data_dir=tmp_path),
+    )
+    voice_loop = VoiceLoop(
+        vad=MockVADEngine(),
+        stt=MockSTTEngine(),
+        orchestrator=orchestrator,
+        tts=MockTTSEngine(),
+        audio_wake_word_detector=_NeverTriggeredAudioWakeDetector(),
+    )
+
+    result = voice_loop.handle_audio_turn(b"ok kome mets un minuteur 2")
+
+    assert result is None
+
+
+def test_voice_loop_audio_wake_word_allows_turn(tmp_path: Path) -> None:
+    orchestrator = AssistantOrchestrator(
+        router=IntentRouter(),
+        tools=default_tool_registry(data_dir=tmp_path),
+    )
+    voice_loop = VoiceLoop(
+        vad=MockVADEngine(),
+        stt=MockSTTEngine(),
+        orchestrator=orchestrator,
+        tts=MockTTSEngine(),
+        audio_wake_word_detector=_AlwaysTriggeredAudioWakeDetector(),
+    )
+
+    result = voice_loop.handle_audio_turn(b"mets un minuteur 2")
+
+    assert result is not None

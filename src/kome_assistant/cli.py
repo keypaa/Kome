@@ -10,7 +10,7 @@ from kome_assistant.core.voice_loop import VoiceLoop
 from kome_assistant.integrations.audio_input import MicrophoneAudioInput
 from kome_assistant.integrations.audio_output import NullAudioOutput, SimpleAudioOutput
 from kome_assistant.integrations.factory import build_voice_backends
-from kome_assistant.integrations.wake_word import PhraseWakeWordDetector
+from kome_assistant.integrations.wake_word import OpenWakeWordAudioDetector, PhraseWakeWordDetector
 from kome_assistant.tools.registry import default_tool_registry
 
 
@@ -36,8 +36,37 @@ def main() -> None:
     parser.add_argument(
         "--record-seconds",
         type=float,
-        default=4.0,
+        default=2.5,
         help="Audio capture length per live turn in seconds",
+    )
+    parser.add_argument(
+        "--live-mode",
+        choices=("continuous", "manual"),
+        default="continuous",
+        help="Continuous loops microphone capture automatically; manual waits for Enter each turn",
+    )
+    parser.add_argument(
+        "--max-turns",
+        type=int,
+        default=0,
+        help="Optional limit for live turns (0 means unlimited)",
+    )
+    parser.add_argument(
+        "--wake-backend",
+        choices=("phrase", "openwakeword"),
+        default="phrase",
+        help="Wake-word backend: phrase gate after STT or openWakeWord audio gate",
+    )
+    parser.add_argument(
+        "--wake-threshold",
+        type=float,
+        default=0.5,
+        help="Confidence threshold for openWakeWord backend",
+    )
+    parser.add_argument(
+        "--openwakeword-model",
+        default="",
+        help="Optional path to custom openWakeWord model",
     )
     args = parser.parse_args()
 
@@ -55,6 +84,11 @@ def main() -> None:
             profile=args.voice_profile,
             wake_word=args.wake_word,
             record_seconds=args.record_seconds,
+            live_mode=args.live_mode,
+            max_turns=args.max_turns,
+            wake_backend=args.wake_backend,
+            wake_threshold=args.wake_threshold,
+            openwakeword_model=args.openwakeword_model,
         )
         return
 
@@ -86,6 +120,39 @@ def _build_voice_loop(orchestrator: AssistantOrchestrator, profile: str, wake_wo
     )
 
 
+def _build_voice_loop_with_wake_backend(
+    orchestrator: AssistantOrchestrator,
+    profile: str,
+    wake_word: str,
+    wake_backend: str,
+    wake_threshold: float,
+    openwakeword_model: str,
+) -> VoiceLoop:
+    backends = build_voice_backends(profile)
+    text_detector = PhraseWakeWordDetector([wake_word]) if wake_word.strip() else None
+    audio_detector = None
+
+    if wake_word.strip() and wake_backend == "openwakeword":
+        model_path = Path(openwakeword_model) if openwakeword_model.strip() else None
+        try:
+            audio_detector = OpenWakeWordAudioDetector(
+                wake_phrases=[wake_word],
+                threshold=wake_threshold,
+                custom_model_path=model_path,
+            )
+        except RuntimeError as exc:
+            print(f"assistant> openWakeWord unavailable ({exc}), fallback to phrase wake-word")
+
+    return VoiceLoop(
+        vad=backends.vad,
+        stt=backends.stt,
+        orchestrator=orchestrator,
+        tts=backends.tts,
+        wake_word_detector=text_detector,
+        audio_wake_word_detector=audio_detector,
+    )
+
+
 def _run_voice_sim_loop(orchestrator: AssistantOrchestrator, profile: str, wake_word: str) -> None:
     backends = build_voice_backends(profile)
     voice_loop = _build_voice_loop(orchestrator=orchestrator, profile=profile, wake_word=wake_word)
@@ -111,42 +178,88 @@ def _run_voice_live_loop(
     profile: str,
     wake_word: str,
     record_seconds: float,
+    live_mode: str,
+    max_turns: int,
+    wake_backend: str,
+    wake_threshold: float,
+    openwakeword_model: str,
 ) -> None:
     backends = build_voice_backends(profile)
-    voice_loop = _build_voice_loop(orchestrator=orchestrator, profile=profile, wake_word=wake_word)
+    voice_loop = _build_voice_loop_with_wake_backend(
+        orchestrator=orchestrator,
+        profile=profile,
+        wake_word=wake_word,
+        wake_backend=wake_backend,
+        wake_threshold=wake_threshold,
+        openwakeword_model=openwakeword_model,
+    )
     audio_in = MicrophoneAudioInput(channels=1)
     audio_out = SimpleAudioOutput()
 
-    print(f"Kome local assistant (voice-live mode, profile={backends.selected_profile}).")
+    print(f"Kome local assistant (voice-live mode={live_mode}, profile={backends.selected_profile}).")
     if wake_word.strip():
-        print(f"Wake-word required: {wake_word}")
-    print("Press Enter to capture one turn, or type 'exit' to quit.")
+        print(f"Wake-word required: {wake_word} (backend={wake_backend})")
 
-    while True:
-        action = input("live> ").strip().lower()
-        if action in {"exit", "quit"}:
-            print("bye")
-            break
-        try:
-            wav_audio = audio_in.capture_wav(duration_s=record_seconds, sample_rate_hz=16000)
-        except RuntimeError as exc:
-            print(f"assistant> microphone backend unavailable: {exc}")
-            print("assistant> install optional audio dependencies and retry")
-            return
+    if live_mode == "manual":
+        print("Press Enter to capture one turn, or type 'exit' to quit.")
+        turns = 0
+        while True:
+            action = input("live> ").strip().lower()
+            if action in {"exit", "quit"}:
+                print("bye")
+                break
+            if _run_single_live_turn(voice_loop, audio_in, audio_out, record_seconds):
+                turns += 1
+            if max_turns and turns >= max_turns:
+                print("assistant> reached max turns")
+                break
+        return
 
-        outcome = voice_loop.handle_audio_turn_with_metrics(wav_audio)
-        if outcome.result is None:
-            print("assistant> no actionable speech detected")
-            print(f"metrics> total={outcome.metrics.total_ms:.2f}ms")
-            continue
+    print("Continuous capture active (Ctrl+C to stop).")
+    turns = 0
+    try:
+        for wav_audio in audio_in.capture_wav_stream(
+            duration_s=record_seconds,
+            sample_rate_hz=16000,
+            max_turns=max_turns,
+        ):
+            _run_single_live_turn(voice_loop, audio_in, audio_out, record_seconds, wav_audio=wav_audio)
+            turns += 1
+            if max_turns and turns >= max_turns:
+                print("assistant> reached max turns")
+                break
+    except KeyboardInterrupt:
+        print("\nbye")
 
-        print(f"stt> {outcome.result.user_text}")
-        print(f"assistant> {outcome.result.assistant_text}")
+
+def _run_single_live_turn(
+    voice_loop: VoiceLoop,
+    audio_in: MicrophoneAudioInput,
+    audio_out: SimpleAudioOutput,
+    record_seconds: float,
+    wav_audio: bytes | None = None,
+) -> bool:
+    try:
+        wav_audio = wav_audio or audio_in.capture_wav(duration_s=record_seconds, sample_rate_hz=16000)
+    except RuntimeError as exc:
+        print(f"assistant> microphone backend unavailable: {exc}")
+        print("assistant> install optional audio dependencies and retry")
+        return False
+
+    outcome = voice_loop.handle_audio_turn_with_metrics(wav_audio)
+    if outcome.result is None:
+        print("assistant> no actionable speech detected")
         print(f"metrics> total={outcome.metrics.total_ms:.2f}ms")
-        played = audio_out.play_wav_bytes(outcome.result.synthesized_audio_bytes)
-        if not played:
-            NullAudioOutput().play_wav_bytes(outcome.result.synthesized_audio_bytes)
-            print("assistant> audio playback backend unavailable (install simpleaudio)")
+        return False
+
+    print(f"stt> {outcome.result.user_text}")
+    print(f"assistant> {outcome.result.assistant_text}")
+    print(f"metrics> total={outcome.metrics.total_ms:.2f}ms")
+    played = audio_out.play_wav_bytes(outcome.result.synthesized_audio_bytes)
+    if not played:
+        NullAudioOutput().play_wav_bytes(outcome.result.synthesized_audio_bytes)
+        print("assistant> audio playback backend unavailable (install simpleaudio)")
+    return True
 
 
 def _run_benchmark(orchestrator: AssistantOrchestrator, profile: str) -> None:

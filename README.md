@@ -37,7 +37,7 @@ kome --mode voice-sim
 Live microphone mode:
 
 ```bash
-kome --mode voice-live --voice-profile local --record-seconds 4
+kome --mode voice-live --voice-profile local --live-mode continuous --record-seconds 2.5
 ```
 
 Latency benchmark mode:
@@ -64,7 +64,7 @@ kome --mode voice-sim
 Live microphone mode:
 
 ```powershell
-kome --mode voice-live --voice-profile local --record-seconds 4
+kome --mode voice-live --voice-profile local --live-mode continuous --record-seconds 2.5
 ```
 
 Latency benchmark mode:
@@ -99,6 +99,18 @@ Optional wake-word phrase gate:
 kome --mode voice-live --voice-profile local --wake-word "ok kome"
 ```
 
+Optional openWakeWord audio gate:
+
+```powershell
+kome --mode voice-live --voice-profile local --wake-word "ok kome" --wake-backend openwakeword --wake-threshold 0.5
+```
+
+Manual capture mode (press Enter each turn):
+
+```powershell
+kome --mode voice-live --live-mode manual --record-seconds 3
+```
+
 Install optional Python dependencies for real STT adapter:
 
 ```powershell
@@ -117,6 +129,7 @@ Notes:
 - The TTS adapter executes a local piper-compatible binary via subprocess.
 - If faster-whisper or Piper model/binary are not available, local profile falls back to mock adapters.
 - If microphone or playback optional dependencies are missing, voice-live mode reports a local setup error and exits safely.
+- If openwakeword is unavailable and `--wake-backend openwakeword` is requested, runtime falls back to phrase wake-word.
 
 Type a command in French or English.
 
@@ -147,6 +160,6 @@ git push -u origin main
 
 ## Next implementation goals
 
-- Replace one-shot live capture with continuous streaming mic loop
-- Integrate a dedicated wake-word model backend (Porcupine/openWakeWord)
 - Add automatic barge-in and interruption handling during TTS playback
+- Replace basic microphone polling with lower-latency streaming audio chunks
+- Add wake-word backend alternatives (Porcupine/openWakeWord) with richer confidence logging

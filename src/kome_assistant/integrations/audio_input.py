@@ -2,12 +2,22 @@ from __future__ import annotations
 
 import wave
 from io import BytesIO
+from typing import Iterator
 
 
 class AudioInput:
     def capture_wav(self, duration_s: float, sample_rate_hz: int = 16000) -> bytes:
         del duration_s, sample_rate_hz
         raise NotImplementedError("Audio input backend not configured")
+
+    def capture_wav_stream(
+        self,
+        duration_s: float,
+        sample_rate_hz: int = 16000,
+        max_turns: int = 0,
+    ) -> Iterator[bytes]:
+        del duration_s, sample_rate_hz, max_turns
+        raise NotImplementedError("Audio input stream backend not configured")
 
 
 class MicrophoneAudioInput(AudioInput):
@@ -39,6 +49,21 @@ class MicrophoneAudioInput(AudioInput):
             channels=self.channels,
             sample_width_bytes=2,
         )
+
+    def capture_wav_stream(
+        self,
+        duration_s: float,
+        sample_rate_hz: int = 16000,
+        max_turns: int = 0,
+    ) -> Iterator[bytes]:
+        if max_turns < 0:
+            raise ValueError("max_turns must be >= 0")
+        turns = 0
+        while True:
+            yield self.capture_wav(duration_s=duration_s, sample_rate_hz=sample_rate_hz)
+            turns += 1
+            if max_turns and turns >= max_turns:
+                break
 
 
 def _encode_pcm16_wav(

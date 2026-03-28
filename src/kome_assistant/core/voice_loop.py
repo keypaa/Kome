@@ -7,7 +7,7 @@ from kome_assistant.core.orchestrator import AssistantOrchestrator
 from kome_assistant.integrations.stt import STTEngine
 from kome_assistant.integrations.tts import TTSEngine
 from kome_assistant.integrations.vad import VADEngine
-from kome_assistant.integrations.wake_word import WakeWordDetector
+from kome_assistant.integrations.wake_word import AudioWakeWordDetector, WakeWordDetector
 
 
 @dataclass(slots=True)
@@ -41,6 +41,7 @@ class VoiceLoop:
     orchestrator: AssistantOrchestrator
     tts: TTSEngine
     wake_word_detector: WakeWordDetector | None = None
+    audio_wake_word_detector: AudioWakeWordDetector | None = None
 
     def handle_audio_turn(self, audio_bytes: bytes) -> VoiceTurnResult | None:
         return self.handle_audio_turn_with_metrics(audio_bytes).result
@@ -63,6 +64,21 @@ class VoiceLoop:
                 ),
             )
         end_vad = perf_counter()
+
+        if self.audio_wake_word_detector is not None:
+            audio_decision = self.audio_wake_word_detector.evaluate_audio(audio_bytes)
+            if not audio_decision.triggered:
+                total_ms = (perf_counter() - start_total) * 1000
+                return VoiceTurnResultWithMetrics(
+                    result=None,
+                    metrics=VoiceTurnMetrics(
+                        vad_ms=(end_vad - start_vad) * 1000,
+                        stt_ms=0.0,
+                        orchestration_ms=0.0,
+                        tts_ms=0.0,
+                        total_ms=total_ms,
+                    ),
+                )
 
         start_stt = perf_counter()
         transcription = self.stt.transcribe(audio_bytes)

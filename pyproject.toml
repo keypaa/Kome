@@ -13,6 +13,7 @@ dependencies = []
 [project.optional-dependencies]
 voice = [
 	"faster-whisper>=1.0.0",
+	"openwakeword>=0.6.0",
 	"numpy>=1.26",
 ]
 audio = [

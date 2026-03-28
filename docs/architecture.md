@@ -43,5 +43,6 @@
 - `integrations/audio_input.py`: live microphone capture adapter (sounddevice).
 - `integrations/audio_output.py`: optional playback adapter (simpleaudio).
 - `integrations/wake_word.py`: phrase-level wake-word gating for transcribed text.
+- `integrations/wake_word.py`: optional openWakeWord audio gate before STT.
 - CLI mode `--mode voice-sim` runs full voice orchestration path locally.
-- CLI mode `--mode voice-live` captures one microphone turn at a time and optionally enforces wake-word.
+- CLI mode `--mode voice-live` supports both manual and continuous microphone capture.
