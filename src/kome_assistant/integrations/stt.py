@@ -43,7 +43,11 @@ class MockSTTEngine(STTEngine):
     """
 
     def transcribe(self, audio_bytes: bytes) -> TranscriptionResult:
-        text = audio_bytes.decode("utf-8", errors="ignore").strip()
+        if _looks_like_wav(audio_bytes):
+            # Mock backend cannot transcribe raw audio; keep output empty.
+            return TranscriptionResult(text="", language="fr", confidence=0.0)
+
+        text = _safe_decode_text(audio_bytes)
         if not text:
             return TranscriptionResult(text="", language="fr", confidence=0.0)
 
@@ -59,7 +63,12 @@ class MockStreamingSTTEngine(MockSTTEngine, StreamingSTTEngine):
         self._buffer: list[str] = []
 
     def transcribe_stream_chunk(self, audio_bytes: bytes, is_final: bool = False) -> TranscriptionResult:
-        chunk = audio_bytes.decode("utf-8", errors="ignore").strip()
+        if _looks_like_wav(audio_bytes):
+            if is_final:
+                self._buffer.clear()
+            return TranscriptionResult(text="", language="fr", confidence=0.0)
+
+        chunk = _safe_decode_text(audio_bytes)
         if chunk:
             self._buffer.append(chunk)
         if not is_final:
@@ -201,3 +210,18 @@ def _wav_bytes_to_float32(audio_bytes: bytes) -> Any:
     if channels > 1:
         waveform = waveform.reshape(-1, channels).mean(axis=1)
     return waveform
+
+
+def _looks_like_wav(audio_bytes: bytes) -> bool:
+    return len(audio_bytes) >= 12 and audio_bytes.startswith(b"RIFF") and audio_bytes[8:12] == b"WAVE"
+
+
+def _safe_decode_text(audio_bytes: bytes) -> str:
+    decoded = audio_bytes.decode("utf-8", errors="ignore").strip()
+    if not decoded:
+        return ""
+    printable = sum(1 for char in decoded if char.isprintable())
+    ratio = printable / max(len(decoded), 1)
+    if ratio < 0.9:
+        return ""
+    return decoded

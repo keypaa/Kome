@@ -57,10 +57,15 @@ async function refreshConfig() {
   try {
     const data = await fetch('/api/config').then((res) => res.json());
     streamingEnabled = Boolean(data.ok && data.streaming_stt);
+    if (data.ok && data.mock_stt) {
+      setStatus(`Idle - ${data.stt_backend} active (audio transcription disabled in mock mode)`, true);
+      intentEl.textContent = 'Tip: set KOME_STT_MODE=faster-whisper for real microphone transcription.';
+      return;
+    }
     if (streamingEnabled) {
-      setStatus('Idle - backend streaming STT ready');
+      setStatus(`Idle - backend streaming STT ready (${data.stt_backend || 'unknown'})`);
     } else {
-      setStatus('Idle - backend will use non-streaming fallback');
+      setStatus(`Idle - backend will use non-streaming fallback (${data.stt_backend || 'unknown'})`);
     }
   } catch (error) {
     setStatus(`Config check failed: ${error}`, true);

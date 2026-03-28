@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 
 from kome_assistant.core.orchestrator import AssistantOrchestrator
 from kome_assistant.core.voice_loop import StreamingVoiceUpdate, VoiceLoop
+from kome_assistant.integrations.stt import MockSTTEngine, MockStreamingSTTEngine
 
 
 @dataclass(slots=True)
@@ -69,11 +70,15 @@ def run_web_ui_server(
                 self._write_json(200, {"ok": True})
                 return
             if route == "/api/config":
+                stt_engine = app.voice_loop.stt
+                is_mock_stt = isinstance(stt_engine, (MockSTTEngine, MockStreamingSTTEngine))
                 self._write_json(
                     200,
                     {
                         "ok": True,
                         "streaming_stt": app.voice_loop.supports_streaming_stt(),
+                        "mock_stt": is_mock_stt,
+                        "stt_backend": type(stt_engine).__name__,
                     },
                 )
                 return
