@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 
@@ -29,7 +29,7 @@ class StateStore:
             conn.commit()
 
     def add_timer(self, minutes: int) -> int:
-        created_at = datetime.utcnow().isoformat(timespec="seconds")
+        created_at = datetime.now(UTC).isoformat(timespec="seconds")
         with self._connect() as conn:
             cursor = conn.execute(
                 "INSERT INTO timers (minutes, created_at_utc, active) VALUES (?, ?, 1)",

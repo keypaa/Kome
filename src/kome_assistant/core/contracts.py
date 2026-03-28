@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 
@@ -23,7 +23,7 @@ class AssistantTurnResult:
     reply_text: str
     language: str
     used_tool: str | None = None
-    timestamp_utc: datetime = field(default_factory=datetime.utcnow)
+    timestamp_utc: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 @dataclass(slots=True)

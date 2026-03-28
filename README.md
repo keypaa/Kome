@@ -28,6 +28,12 @@ pip install -e .
 kome
 ```
 
+Simulated voice pipeline mode:
+
+```bash
+kome --mode voice-sim
+```
+
 Windows PowerShell:
 
 ```powershell
@@ -35,6 +41,12 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -e .
 kome
+```
+
+Simulated voice pipeline mode:
+
+```powershell
+kome --mode voice-sim
 ```
 
 Type a command in French or English.
@@ -66,6 +78,6 @@ git push -u origin main
 
 ## Next implementation goals
 
-- Add real wake-word + VAD + STT integrations
-- Add streaming TTS output and interruption handling
+- Replace mock voice adapters with real wake-word + VAD + STT integrations
+- Replace mock TTS with Piper runtime and audio playback
 - Add benchmark harness for 2-4s latency targets
