@@ -103,6 +103,46 @@ class OpenWakeWordAudioDetector(AudioWakeWordDetector):
         return self._model
 
 
+class PorcupineAudioDetector(AudioWakeWordDetector):
+    """Optional Porcupine wake-word backend.
+
+    Requires `pvporcupine` and a local access key. Keyword can be built-in or
+    provided as a custom `.ppn` path.
+    """
+
+    def __init__(self, access_key: str, keyword_path: Path | None = None, keyword_name: str = "porcupine") -> None:
+        self.access_key = access_key
+        self.keyword_path = keyword_path
+        self.keyword_name = keyword_name
+        self._engine: Any | None = None
+
+    def evaluate_audio(self, wav_audio_bytes: bytes) -> AudioWakeWordDecision:
+        engine = self._load_engine()
+        pcm_i16 = _decode_wav_to_mono_i16(wav_audio_bytes)
+        frame_len = int(engine.frame_length)
+        triggered = False
+        for start in range(0, len(pcm_i16) - frame_len + 1, frame_len):
+            frame = pcm_i16[start : start + frame_len]
+            if int(engine.process(frame)) >= 0:
+                triggered = True
+                break
+        return AudioWakeWordDecision(triggered=triggered, confidence=1.0 if triggered else 0.0)
+
+    def _load_engine(self) -> Any:
+        if self._engine is not None:
+            return self._engine
+        try:
+            import pvporcupine
+        except ImportError as exc:
+            raise RuntimeError("pvporcupine is not installed") from exc
+
+        if self.keyword_path is not None:
+            self._engine = pvporcupine.create(access_key=self.access_key, keyword_paths=[str(self.keyword_path)])
+        else:
+            self._engine = pvporcupine.create(access_key=self.access_key, keywords=[self.keyword_name])
+        return self._engine
+
+
 def _decode_wav_to_mono_i16(wav_audio_bytes: bytes) -> Any:
     import wave
 

@@ -1,0 +1,16 @@
+[Unit]
+Description=Kome Local Assistant
+After=sound.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/kome
+EnvironmentFile=/etc/kome/kome.env
+ExecStart=/opt/kome/.venv/bin/kome --mode voice-live --voice-profile local --live-mode continuous
+Restart=always
+RestartSec=3
+User=kome
+Group=audio
+
+[Install]
+WantedBy=multi-user.target

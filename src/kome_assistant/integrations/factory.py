@@ -6,7 +6,13 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
-from kome_assistant.integrations.stt import FasterWhisperSTTEngine, MockSTTEngine, STTEngine
+from kome_assistant.integrations.stt import (
+    FasterWhisperSTTEngine,
+    FasterWhisperStreamingSTTEngine,
+    MockSTTEngine,
+    MockStreamingSTTEngine,
+    STTEngine,
+)
 from kome_assistant.integrations.tts import MockTTSEngine, PiperExternalTTSEngine, TTSEngine
 from kome_assistant.integrations.vad import EnergyVADEngine, MockVADEngine, VADEngine
 
@@ -46,7 +52,10 @@ def build_voice_backends(profile: str = "mock") -> VoiceBackends:
 
 def _build_local_stt_or_mock() -> STTEngine:
     mode = os.getenv("KOME_STT_MODE", "auto").strip().lower()
+    streaming = os.getenv("KOME_STT_STREAMING", "0").strip().lower() in {"1", "true", "yes", "on"}
     if mode == "mock":
+        if streaming:
+            return MockStreamingSTTEngine()
         return MockSTTEngine()
 
     wants_real = mode in {"auto", "faster-whisper", "faster_whisper", "real"}
@@ -54,12 +63,20 @@ def _build_local_stt_or_mock() -> STTEngine:
         model_name = os.getenv("KOME_STT_MODEL", "small")
         device = os.getenv("KOME_STT_DEVICE", "cpu")
         compute_type = os.getenv("KOME_STT_COMPUTE_TYPE", "int8")
+        if streaming:
+            return FasterWhisperStreamingSTTEngine(
+                model_size_or_path=model_name,
+                device=device,
+                compute_type=compute_type,
+            )
         return FasterWhisperSTTEngine(
             model_size_or_path=model_name,
             device=device,
             compute_type=compute_type,
         )
 
+    if streaming:
+        return MockStreamingSTTEngine()
     return MockSTTEngine()
 
 

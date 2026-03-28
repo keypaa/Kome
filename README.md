@@ -108,6 +108,12 @@ Optional openWakeWord audio gate:
 kome --mode voice-live --voice-profile local --wake-word "ok kome" --wake-backend openwakeword --wake-threshold 0.5
 ```
 
+Optional Porcupine audio gate:
+
+```powershell
+kome --mode voice-live --voice-profile local --wake-word "ok kome" --wake-backend porcupine --porcupine-access-key "<KEY>"
+```
+
 Tune adaptive chunk bounds:
 
 ```powershell
@@ -138,6 +144,24 @@ Disable adaptive chunk tuning:
 kome --mode voice-live --no-adaptive-chunk
 ```
 
+Run built-in scenario eval suite (French-first):
+
+```powershell
+kome --mode eval --voice-profile local
+```
+
+Run diagnostics summary from JSONL metrics/events:
+
+```powershell
+kome --mode diagnostics --metrics-log data/logs/metrics.jsonl --events-log data/logs/events.jsonl
+```
+
+Wake calibration sweep on labeled wav files (`wake_*.wav` and `nonwake_*.wav`):
+
+```powershell
+kome --mode wake-calibrate --wake-backend openwakeword --wake-word "ok kome" --wake-calibrate-dir .\calibration
+```
+
 Manual capture mode (press Enter each turn):
 
 ```powershell
@@ -163,9 +187,13 @@ Notes:
 - If faster-whisper or Piper model/binary are not available, local profile falls back to mock adapters.
 - If microphone or playback optional dependencies are missing, voice-live mode reports a local setup error and exits safely.
 - If openwakeword is unavailable and `--wake-backend openwakeword` is requested, runtime falls back to phrase wake-word.
+- If Porcupine is unavailable and `--wake-backend porcupine` is requested, runtime falls back to phrase wake-word.
 - In voice-live mode, barge-in is enabled by default: user speech during playback interrupts TTS.
 - When openWakeWord backend is active, runtime logs wake-word confidence per turn.
+- Voice-live mode writes structured events and turn metrics to JSONL logs (`--events-log`, `--metrics-log`).
 - Output backend can be selected explicitly (`simpleaudio` or `sounddevice`).
+- Audio output arbitration attempts fallback backend when primary playback fails.
+- Safety policy hardening includes rate-limit/cooldown guardrails and optional strict confirmations (`KOME_SAFE_CONFIRM=1`).
 
 Type a command in French or English.
 
@@ -196,6 +224,6 @@ git push -u origin main
 
 ## Next implementation goals
 
-- Add wake-word backend alternatives (Porcupine/openWakeWord) with richer confidence logging
-- Add robust device arbitration for full-duplex capture/playback across different audio hardware
-- Add adaptive chunk sizing and buffering controls to tune latency vs accuracy
+- Service packaging for Linux is available under `deploy/` (systemd unit + env template + install script)
+- Expand scenario corpus and real-audio eval set for accuracy regression tracking
+- Wire true incremental streaming STT hypotheses into early intent triggering in live loop
