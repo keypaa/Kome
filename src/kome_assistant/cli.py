@@ -47,6 +47,11 @@ def main() -> None:
         help="Optional wake word phrase, e.g. 'ok kome'",
     )
     parser.add_argument(
+        "--wake-aliases",
+        default="",
+        help="Optional wake-word aliases, comma-separated (web-ui compatibility)",
+    )
+    parser.add_argument(
         "--record-seconds",
         type=float,
         default=2.5,
