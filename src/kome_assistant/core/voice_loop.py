@@ -7,6 +7,7 @@ from kome_assistant.core.orchestrator import AssistantOrchestrator
 from kome_assistant.integrations.stt import STTEngine
 from kome_assistant.integrations.tts import TTSEngine
 from kome_assistant.integrations.vad import VADEngine
+from kome_assistant.integrations.wake_word import WakeWordDetector
 
 
 @dataclass(slots=True)
@@ -15,6 +16,7 @@ class VoiceTurnResult:
     assistant_text: str
     language: str
     synthesized_audio_bytes: bytes
+    synthesized_sample_rate_hz: int
 
 
 @dataclass(slots=True)
@@ -38,6 +40,7 @@ class VoiceLoop:
     stt: STTEngine
     orchestrator: AssistantOrchestrator
     tts: TTSEngine
+    wake_word_detector: WakeWordDetector | None = None
 
     def handle_audio_turn(self, audio_bytes: bytes) -> VoiceTurnResult | None:
         return self.handle_audio_turn_with_metrics(audio_bytes).result
@@ -77,8 +80,37 @@ class VoiceLoop:
                 ),
             )
 
+        processed_text = transcription.text
+        if self.wake_word_detector is not None:
+            decision = self.wake_word_detector.evaluate(transcription.text)
+            if not decision.triggered:
+                total_ms = (perf_counter() - start_total) * 1000
+                return VoiceTurnResultWithMetrics(
+                    result=None,
+                    metrics=VoiceTurnMetrics(
+                        vad_ms=(end_vad - start_vad) * 1000,
+                        stt_ms=(end_stt - start_stt) * 1000,
+                        orchestration_ms=0.0,
+                        tts_ms=0.0,
+                        total_ms=total_ms,
+                    ),
+                )
+            processed_text = decision.text_without_wake_word
+            if not processed_text:
+                total_ms = (perf_counter() - start_total) * 1000
+                return VoiceTurnResultWithMetrics(
+                    result=None,
+                    metrics=VoiceTurnMetrics(
+                        vad_ms=(end_vad - start_vad) * 1000,
+                        stt_ms=(end_stt - start_stt) * 1000,
+                        orchestration_ms=0.0,
+                        tts_ms=0.0,
+                        total_ms=total_ms,
+                    ),
+                )
+
         start_orchestration = perf_counter()
-        assistant_result = self.orchestrator.handle_text_turn(transcription.text)
+        assistant_result = self.orchestrator.handle_text_turn(processed_text)
         end_orchestration = perf_counter()
 
         start_tts = perf_counter()
@@ -91,10 +123,11 @@ class VoiceLoop:
         total_ms = (perf_counter() - start_total) * 1000
         return VoiceTurnResultWithMetrics(
             result=VoiceTurnResult(
-                user_text=transcription.text,
+                user_text=processed_text,
                 assistant_text=assistant_result.reply_text,
                 language=assistant_result.language,
                 synthesized_audio_bytes=tts_result.audio_bytes,
+                synthesized_sample_rate_hz=tts_result.sample_rate_hz,
             ),
             metrics=VoiceTurnMetrics(
                 vad_ms=(end_vad - start_vad) * 1000,

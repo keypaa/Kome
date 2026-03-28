@@ -34,6 +34,12 @@ Simulated voice pipeline mode:
 kome --mode voice-sim
 ```
 
+Live microphone mode:
+
+```bash
+kome --mode voice-live --voice-profile local --record-seconds 4
+```
+
 Latency benchmark mode:
 
 ```bash
@@ -53,6 +59,12 @@ Simulated voice pipeline mode:
 
 ```powershell
 kome --mode voice-sim
+```
+
+Live microphone mode:
+
+```powershell
+kome --mode voice-live --voice-profile local --record-seconds 4
 ```
 
 Latency benchmark mode:
@@ -78,7 +90,13 @@ $env:KOME_STT_COMPUTE_TYPE="int8"
 $env:KOME_TTS_MODE="piper1-gpl"
 $env:KOME_PIPER_BIN="piper"
 $env:KOME_PIPER_MODEL="C:\models\fr_FR-upmc-medium.onnx"
-kome --mode voice-sim --voice-profile local
+kome --mode voice-live --voice-profile local
+```
+
+Optional wake-word phrase gate:
+
+```powershell
+kome --mode voice-live --voice-profile local --wake-word "ok kome"
 ```
 
 Install optional Python dependencies for real STT adapter:
@@ -87,11 +105,18 @@ Install optional Python dependencies for real STT adapter:
 pip install -e .[voice]
 ```
 
+Install optional Python dependencies for live audio I/O:
+
+```powershell
+pip install -e .[audio]
+```
+
 Notes:
 
 - The maintained Piper project is piper1-gpl.
 - The TTS adapter executes a local piper-compatible binary via subprocess.
 - If faster-whisper or Piper model/binary are not available, local profile falls back to mock adapters.
+- If microphone or playback optional dependencies are missing, voice-live mode reports a local setup error and exits safely.
 
 Type a command in French or English.
 
@@ -122,6 +147,6 @@ git push -u origin main
 
 ## Next implementation goals
 
-- Integrate streaming microphone capture to feed WAV frames into real STT
-- Add wake-word stage before VAD/STT pipeline
-- Add audio playback output for Piper-generated WAV responses
+- Replace one-shot live capture with continuous streaming mic loop
+- Integrate a dedicated wake-word model backend (Porcupine/openWakeWord)
+- Add automatic barge-in and interruption handling during TTS playback

@@ -6,6 +6,7 @@ from kome_assistant.core.voice_loop import VoiceLoop
 from kome_assistant.integrations.stt import MockSTTEngine
 from kome_assistant.integrations.tts import MockTTSEngine
 from kome_assistant.integrations.vad import MockVADEngine
+from kome_assistant.integrations.wake_word import PhraseWakeWordDetector
 from kome_assistant.tools.registry import default_tool_registry
 
 
@@ -27,6 +28,7 @@ def test_voice_loop_handles_timer_request(tmp_path: Path) -> None:
     assert result.user_text == "mets un minuteur 4"
     assert "Minuteur defini" in result.assistant_text
     assert result.synthesized_audio_bytes
+    assert result.synthesized_sample_rate_hz == 16000
 
 
 def test_voice_loop_returns_none_without_speech(tmp_path: Path) -> None:
@@ -44,3 +46,24 @@ def test_voice_loop_returns_none_without_speech(tmp_path: Path) -> None:
     result = voice_loop.handle_audio_turn(b"   ")
 
     assert result is None
+
+
+def test_voice_loop_requires_wake_word_when_configured(tmp_path: Path) -> None:
+    orchestrator = AssistantOrchestrator(
+        router=IntentRouter(),
+        tools=default_tool_registry(data_dir=tmp_path),
+    )
+    voice_loop = VoiceLoop(
+        vad=MockVADEngine(),
+        stt=MockSTTEngine(),
+        orchestrator=orchestrator,
+        tts=MockTTSEngine(),
+        wake_word_detector=PhraseWakeWordDetector(["ok kome"]),
+    )
+
+    blocked = voice_loop.handle_audio_turn(b"mets un minuteur 2")
+    accepted = voice_loop.handle_audio_turn(b"ok kome mets un minuteur 2")
+
+    assert blocked is None
+    assert accepted is not None
+    assert accepted.user_text == "mets un minuteur 2"

@@ -15,6 +15,10 @@ voice = [
 	"faster-whisper>=1.0.0",
 	"numpy>=1.26",
 ]
+audio = [
+	"sounddevice>=0.4.6",
+	"simpleaudio>=1.0.4",
+]
 
 [project.scripts]
 kome = "kome_assistant.cli:main"
