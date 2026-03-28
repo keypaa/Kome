@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 from kome_assistant.core.orchestrator import AssistantOrchestrator
 from kome_assistant.core.voice_loop import StreamingVoiceUpdate, VoiceLoop
 from kome_assistant.integrations.stt import MockSTTEngine, MockStreamingSTTEngine
+from kome_assistant.integrations.wake_word import PhraseWakeWordDetector
 
 
 @dataclass(slots=True)
@@ -91,6 +92,9 @@ def run_web_ui_server(
             if route == "/styles.css":
                 self._write_file(app.static_dir / "styles.css", "text/css; charset=utf-8")
                 return
+            if route == "/mic-worklet.js":
+                self._write_file(app.static_dir / "mic-worklet.js", "application/javascript; charset=utf-8")
+                return
             self.send_error(404, "Not found")
 
         def do_POST(self) -> None:  # noqa: N802
@@ -137,7 +141,14 @@ def run_web_ui_server(
                 return
 
             if route == "/api/stream/start":
+                wake_word = str(payload.get("wake_word", "")).strip()
+                wake_aliases = payload.get("wake_aliases", [])
+                alias_list = wake_aliases if isinstance(wake_aliases, list) else []
+                phrases = [item for item in [wake_word, *[str(x).strip() for x in alias_list]] if item]
+
                 with app.lock:
+                    if phrases and isinstance(app.voice_loop.wake_word_detector, PhraseWakeWordDetector):
+                        app.voice_loop.wake_word_detector = PhraseWakeWordDetector(phrases)
                     app.voice_loop.reset_stream_state()
                 self._write_json(200, {"ok": True})
                 return

@@ -46,6 +46,12 @@ class PhraseWakeWordDetector(WakeWordDetector):
             if low.startswith(phrase):
                 remainder = stripped[len(phrase) :].strip(" ,.:;!?")
                 return WakeWordDecision(triggered=True, text_without_wake_word=remainder)
+
+            # Also accept wake phrase near the beginning, e.g. "euh ok kome ...".
+            index = low.find(phrase)
+            if 0 < index <= 20:
+                remainder = stripped[index + len(phrase) :].strip(" ,.:;!?")
+                return WakeWordDecision(triggered=True, text_without_wake_word=remainder)
         return WakeWordDecision(triggered=False, text_without_wake_word="")
 
 

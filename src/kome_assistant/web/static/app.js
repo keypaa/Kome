@@ -20,6 +20,7 @@ let processorNode = null;
 let pendingPromise = Promise.resolve();
 let pcmBuffer = new Float32Array(0);
 let streamingEnabled = false;
+let backendConfig = { mockStt: false, sttBackend: 'unknown' };
 
 function setStatus(text, isError = false) {
   statusEl.textContent = text;
@@ -57,6 +58,10 @@ async function refreshConfig() {
   try {
     const data = await fetch('/api/config').then((res) => res.json());
     streamingEnabled = Boolean(data.ok && data.streaming_stt);
+    backendConfig = {
+      mockStt: Boolean(data.ok && data.mock_stt),
+      sttBackend: data.stt_backend || 'unknown',
+    };
     if (data.ok && data.mock_stt) {
       setStatus(`Idle - ${data.stt_backend} active (audio transcription disabled in mock mode)`, true);
       intentEl.textContent = 'Tip: set KOME_STT_MODE=faster-whisper for real microphone transcription.';
@@ -211,6 +216,14 @@ async function startStreaming() {
     return;
   }
 
+  if (backendConfig.mockStt) {
+    setStatus(
+      `Cannot start mic transcription with ${backendConfig.sttBackend}. Set KOME_STT_MODE=faster-whisper and restart web UI.`,
+      true,
+    );
+    return;
+  }
+
   setStatus('Requesting microphone permission...');
 
   try {
@@ -230,18 +243,39 @@ async function startStreaming() {
 
     audioContext = new (window.AudioContext || window.webkitAudioContext)();
     sourceNode = audioContext.createMediaStreamSource(mediaStream);
-    processorNode = audioContext.createScriptProcessor(4096, 1, 1);
 
-    processorNode.onaudioprocess = (event) => {
-      if (!running) {
-        return;
-      }
-      const input = event.inputBuffer.getChannelData(0);
-      processAudioChunk(new Float32Array(input), audioContext.sampleRate);
-    };
-
-    sourceNode.connect(processorNode);
-    processorNode.connect(audioContext.destination);
+    if (audioContext.audioWorklet && typeof AudioWorkletNode !== 'undefined') {
+      await audioContext.audioWorklet.addModule('/mic-worklet.js');
+      processorNode = new AudioWorkletNode(audioContext, 'kome-mic-processor', {
+        numberOfInputs: 1,
+        numberOfOutputs: 0,
+        channelCount: 1,
+      });
+      processorNode.port.onmessage = (event) => {
+        if (!running) {
+          return;
+        }
+        const input = event.data;
+        if (!input || !input.length) {
+          return;
+        }
+        processAudioChunk(new Float32Array(input), audioContext.sampleRate);
+      };
+      sourceNode.connect(processorNode);
+    } else {
+      // Fallback for older browsers that do not support AudioWorklet.
+      processorNode = audioContext.createScriptProcessor(4096, 1, 1);
+      processorNode.onaudioprocess = (event) => {
+        if (!running) {
+          return;
+        }
+        const input = event.inputBuffer.getChannelData(0);
+        processAudioChunk(new Float32Array(input), audioContext.sampleRate);
+      };
+      sourceNode.connect(processorNode);
+      processorNode.connect(audioContext.destination);
+      setStatus('Listening (ScriptProcessor fallback active)', true);
+    }
 
     running = true;
     startBtn.disabled = true;
@@ -279,7 +313,12 @@ async function stopStreaming() {
 
   if (processorNode) {
     processorNode.disconnect();
-    processorNode.onaudioprocess = null;
+    if (processorNode.port) {
+      processorNode.port.onmessage = null;
+    }
+    if (Object.prototype.hasOwnProperty.call(processorNode, 'onaudioprocess')) {
+      processorNode.onaudioprocess = null;
+    }
     processorNode = null;
   }
 
