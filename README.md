@@ -40,6 +40,8 @@ Live microphone mode:
 kome --mode voice-live --voice-profile local --live-mode continuous --record-seconds 2.5
 ```
 
+In continuous mode, microphone capture uses chunk streaming (callback-based audio input).
+
 Latency benchmark mode:
 
 ```bash
@@ -167,6 +169,6 @@ git push -u origin main
 
 ## Next implementation goals
 
-- Replace basic microphone polling with lower-latency streaming audio chunks
 - Add wake-word backend alternatives (Porcupine/openWakeWord) with richer confidence logging
 - Add robust device arbitration for full-duplex capture/playback across different audio hardware
+- Add adaptive chunk sizing and buffering controls to tune latency vs accuracy

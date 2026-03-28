@@ -40,7 +40,7 @@
 - `FasterWhisperSTTEngine`: local optional adapter (lazy-loaded model).
 - `PiperExternalTTSEngine`: local subprocess adapter for piper-compatible binaries (including Piper1-GPL).
 - `integrations/factory.py`: profile/env-based backend selection with graceful fallback to mocks.
-- `integrations/audio_input.py`: live microphone capture adapter (sounddevice).
+- `integrations/audio_input.py`: live microphone capture adapter with callback-based chunk streaming (sounddevice).
 - `integrations/audio_output.py`: optional playback adapter (simpleaudio).
 - `integrations/wake_word.py`: phrase-level wake-word gating for transcribed text.
 - `integrations/wake_word.py`: optional openWakeWord audio gate before STT.

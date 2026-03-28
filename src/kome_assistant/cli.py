@@ -224,7 +224,7 @@ def _run_voice_live_loop(
                 break
         return
 
-    print("Continuous capture active (Ctrl+C to stop).")
+    print("Continuous chunk streaming active (Ctrl+C to stop).")
     turns = 0
     try:
         for wav_audio in audio_in.capture_wav_stream(
@@ -244,6 +244,9 @@ def _run_voice_live_loop(
             if max_turns and turns >= max_turns:
                 print("assistant> reached max turns")
                 break
+    except RuntimeError as exc:
+        print(f"assistant> microphone streaming backend unavailable: {exc}")
+        print("assistant> install optional audio dependencies and retry")
     except KeyboardInterrupt:
         print("\nbye")
 
