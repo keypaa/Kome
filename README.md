@@ -40,6 +40,14 @@ Live microphone mode:
 kome --mode voice-live --voice-profile local --live-mode continuous --record-seconds 2.5
 ```
 
+Web UI test bench (mic + wake-word + transcript + assistant response):
+
+```powershell
+kome --mode web-ui --web-host 127.0.0.1 --web-port 8765
+```
+
+Then open `http://127.0.0.1:8765` in Edge/Chrome.
+
 In continuous mode, microphone capture uses chunk streaming (callback-based audio input).
 Adaptive chunk sizing is enabled by default in continuous mode.
 
@@ -89,11 +97,18 @@ $env:KOME_STT_MODE="faster-whisper"
 $env:KOME_STT_MODEL="small"
 $env:KOME_STT_DEVICE="cpu"
 $env:KOME_STT_COMPUTE_TYPE="int8"
+$env:KOME_STT_STREAMING="1"
 
 $env:KOME_TTS_MODE="piper1-gpl"
 $env:KOME_PIPER_BIN="piper"
 $env:KOME_PIPER_MODEL="C:\models\fr_FR-upmc-medium.onnx"
 kome --mode voice-live --voice-profile local
+```
+
+Tune early intent trigger in streaming mode:
+
+```powershell
+kome --mode voice-live --voice-profile local --stream-intent-confidence 0.75 --stream-min-words 2 --stream-stability-chunks 2
 ```
 
 Optional wake-word phrase gate:
@@ -186,11 +201,13 @@ Notes:
 - The TTS adapter executes a local piper-compatible binary via subprocess.
 - If faster-whisper or Piper model/binary are not available, local profile falls back to mock adapters.
 - If microphone or playback optional dependencies are missing, voice-live mode reports a local setup error and exits safely.
+- Continuous voice-live now supports streaming STT chunk handling with early intent trigger before final transcript.
 - If openwakeword is unavailable and `--wake-backend openwakeword` is requested, runtime falls back to phrase wake-word.
 - If Porcupine is unavailable and `--wake-backend porcupine` is requested, runtime falls back to phrase wake-word.
 - In voice-live mode, barge-in is enabled by default: user speech during playback interrupts TTS.
 - When openWakeWord backend is active, runtime logs wake-word confidence per turn.
 - Voice-live mode writes structured events and turn metrics to JSONL logs (`--events-log`, `--metrics-log`).
+- Web UI mode uses the browser microphone SpeechRecognition API for quick Windows testing and sends wake-gated text turns to local assistant APIs.
 - Output backend can be selected explicitly (`simpleaudio` or `sounddevice`).
 - Audio output arbitration attempts fallback backend when primary playback fails.
 - Safety policy hardening includes rate-limit/cooldown guardrails and optional strict confirmations (`KOME_SAFE_CONFIRM=1`).

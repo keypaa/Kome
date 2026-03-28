@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kome Web Voice Tester</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="hero">
+      <h1>Kome Voice Lab</h1>
+      <p>Windows-friendly browser test bench for wake-word, live transcript, intent preview, and assistant actions.</p>
+    </header>
+
+    <section class="panel controls">
+      <label>
+        Wake word
+        <input id="wakeWord" type="text" value="ok kome" />
+      </label>
+      <label>
+        Recognition language
+        <select id="lang">
+          <option value="fr-FR" selected>French (fr-FR)</option>
+          <option value="en-US">English (en-US)</option>
+        </select>
+      </label>
+      <div class="buttons">
+        <button id="startBtn">Start Mic</button>
+        <button id="stopBtn" disabled>Stop Mic</button>
+      </div>
+      <p id="status" class="status">Idle</p>
+    </section>
+
+    <section class="panel">
+      <h2>Live Transcript</h2>
+      <p class="hint">Interim text updates as you speak. Final segments are wake-gated before assistant execution.</p>
+      <pre id="interim" class="live"></pre>
+      <pre id="final" class="live final"></pre>
+    </section>
+
+    <section class="panel">
+      <h2>Intent Preview</h2>
+      <pre id="intent" class="intent">No intent yet.</pre>
+    </section>
+
+    <section class="panel">
+      <h2>Conversation</h2>
+      <div id="history" class="history"></div>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

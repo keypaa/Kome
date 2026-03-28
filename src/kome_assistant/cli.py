@@ -24,13 +24,14 @@ from kome_assistant.integrations.audio_output import (
 from kome_assistant.integrations.factory import build_voice_backends
 from kome_assistant.integrations.wake_word import OpenWakeWordAudioDetector, PorcupineAudioDetector, PhraseWakeWordDetector
 from kome_assistant.tools.registry import default_tool_registry
+from kome_assistant.web.server import run_web_ui_server
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Kome local assistant")
     parser.add_argument(
         "--mode",
-        choices=("text", "voice-sim", "voice-live", "bench", "eval", "wake-calibrate", "diagnostics"),
+        choices=("text", "voice-sim", "voice-live", "bench", "eval", "wake-calibrate", "diagnostics", "web-ui"),
         default="text",
         help="Run text loop, simulated/live voice loop, or local benchmark",
     )
@@ -159,6 +160,35 @@ def main() -> None:
         default="",
         help="Directory containing wake_*.wav and nonwake_*.wav samples for calibration",
     )
+    parser.add_argument(
+        "--stream-intent-confidence",
+        type=float,
+        default=0.75,
+        help="Minimum intent confidence for early trigger in streaming STT mode",
+    )
+    parser.add_argument(
+        "--stream-min-words",
+        type=int,
+        default=2,
+        help="Minimum words before triggering early action in streaming STT mode",
+    )
+    parser.add_argument(
+        "--stream-stability-chunks",
+        type=int,
+        default=2,
+        help="How many consecutive chunks must agree before early trigger",
+    )
+    parser.add_argument(
+        "--web-host",
+        default="127.0.0.1",
+        help="Host interface for web UI mode",
+    )
+    parser.add_argument(
+        "--web-port",
+        type=int,
+        default=8765,
+        help="Port for web UI mode",
+    )
     args = parser.parse_args()
 
     if args.list_audio_devices:
@@ -198,6 +228,9 @@ def main() -> None:
             porcupine_access_key=args.porcupine_access_key,
             porcupine_keyword=args.porcupine_keyword,
             porcupine_keyword_path=args.porcupine_keyword_path,
+            stream_intent_confidence=args.stream_intent_confidence,
+            stream_min_words=args.stream_min_words,
+            stream_stability_chunks=args.stream_stability_chunks,
         )
         return
 
@@ -224,6 +257,10 @@ def main() -> None:
 
     if args.mode == "diagnostics":
         _run_diagnostics(metrics_path=Path(args.metrics_log), events_path=Path(args.events_log))
+        return
+
+    if args.mode == "web-ui":
+        _run_web_ui(orchestrator=orchestrator, host=args.web_host, port=args.web_port)
         return
 
     print("Kome local assistant (text mode). Type 'exit' to quit.")
@@ -339,6 +376,9 @@ def _run_voice_live_loop(
     porcupine_access_key: str,
     porcupine_keyword: str,
     porcupine_keyword_path: str,
+    stream_intent_confidence: float,
+    stream_min_words: int,
+    stream_stability_chunks: int,
 ) -> None:
     backends = build_voice_backends(profile)
     voice_loop = _build_voice_loop_with_wake_backend(
@@ -399,6 +439,10 @@ def _run_voice_live_loop(
     print("Continuous chunk streaming active (Ctrl+C to stop).")
     turns = 0
     current_record_seconds = max(chunk_min_seconds, min(record_seconds, chunk_max_seconds))
+    streaming_stt_enabled = voice_loop.supports_streaming_stt()
+    if streaming_stt_enabled:
+        print("Streaming STT: enabled (early intent triggering)")
+    voice_loop.reset_stream_state()
     try:
         while True:
             for wav_audio in audio_in.capture_wav_stream(
@@ -406,18 +450,34 @@ def _run_voice_live_loop(
                 sample_rate_hz=16000,
                 max_turns=1,
             ):
-                actionable, total_ms = _run_single_live_turn(
-                    voice_loop,
-                    audio_in,
-                    audio_out,
-                    current_record_seconds,
-                    wav_audio=wav_audio,
-                    enable_barge_in=enable_barge_in,
-                    metrics_logger=metrics_logger,
-                    event_logger=event_logger,
-                    arbitrator=arbitrator,
-                )
-                turns += 1
+                if streaming_stt_enabled:
+                    actionable, total_ms = _run_streaming_live_chunk(
+                        voice_loop=voice_loop,
+                        audio_in=audio_in,
+                        audio_out=audio_out,
+                        wav_audio=wav_audio,
+                        enable_barge_in=enable_barge_in,
+                        metrics_logger=metrics_logger,
+                        event_logger=event_logger,
+                        arbitrator=arbitrator,
+                        min_intent_confidence=stream_intent_confidence,
+                        min_words=stream_min_words,
+                        stability_chunks=stream_stability_chunks,
+                    )
+                else:
+                    actionable, total_ms = _run_single_live_turn(
+                        voice_loop,
+                        audio_in,
+                        audio_out,
+                        current_record_seconds,
+                        wav_audio=wav_audio,
+                        enable_barge_in=enable_barge_in,
+                        metrics_logger=metrics_logger,
+                        event_logger=event_logger,
+                        arbitrator=arbitrator,
+                    )
+                if actionable:
+                    turns += 1
                 if enable_adaptive_chunk:
                     next_record_seconds = _next_chunk_size(
                         current=current_record_seconds,
@@ -517,6 +577,74 @@ def _run_single_live_turn(
             NullAudioOutput().play_wav_bytes(outcome.result.synthesized_audio_bytes)
             print("assistant> audio playback backend unavailable (install simpleaudio/sounddevice)")
     return True, outcome.metrics.total_ms
+
+
+def _run_streaming_live_chunk(
+    voice_loop: VoiceLoop,
+    audio_in: MicrophoneAudioInput,
+    audio_out: AudioOutput,
+    wav_audio: bytes,
+    enable_barge_in: bool,
+    metrics_logger: MetricsLogger | None,
+    event_logger: RuntimeLogger | None,
+    arbitrator: AudioArbitrator | None,
+    min_intent_confidence: float,
+    min_words: int,
+    stability_chunks: int,
+) -> tuple[bool, float]:
+    update = voice_loop.handle_audio_stream_chunk_with_metrics(
+        wav_audio,
+        is_final=False,
+        min_intent_confidence=min_intent_confidence,
+        min_words=min_words,
+        stability_chunks=stability_chunks,
+    )
+
+    if update.partial_text and not update.actionable:
+        print(f"stt-partial> {update.partial_text}")
+
+    if not update.actionable or update.result is None or update.metrics is None:
+        return False, 0.0
+
+    print(f"stt> {update.result.user_text}")
+    print(f"assistant> {update.result.assistant_text}")
+    print(f"metrics> total={update.metrics.total_ms:.2f}ms")
+    if update.metrics.audio_wake_confidence is not None:
+        print(f"wake> confidence={update.metrics.audio_wake_confidence:.3f}")
+
+    if metrics_logger is not None:
+        metrics_logger.turn(
+            actionable=True,
+            total_ms=update.metrics.total_ms,
+            vad_ms=update.metrics.vad_ms,
+            stt_ms=update.metrics.stt_ms,
+            orchestration_ms=update.metrics.orchestration_ms,
+            tts_ms=update.metrics.tts_ms,
+            wake_confidence=update.metrics.audio_wake_confidence,
+        )
+
+    played = _play_assistant_audio(
+        wav_bytes=update.result.synthesized_audio_bytes,
+        audio_out=audio_out,
+        audio_in=audio_in,
+        voice_loop=voice_loop,
+        enable_barge_in=enable_barge_in,
+    )
+    if not played:
+        if event_logger is not None:
+            event_logger.event("audio_output_failed", attempted_backend=type(audio_out).__name__)
+        fallback_output = arbitrator.fallback_output(audio_out) if arbitrator is not None else NullAudioOutput()
+        fallback_played = fallback_output.play_wav_bytes(update.result.synthesized_audio_bytes)
+        if event_logger is not None:
+            event_logger.event(
+                "audio_output_fallback",
+                backend=type(fallback_output).__name__,
+                ok=fallback_played,
+            )
+        if not fallback_played:
+            NullAudioOutput().play_wav_bytes(update.result.synthesized_audio_bytes)
+            print("assistant> audio playback backend unavailable (install simpleaudio/sounddevice)")
+    return True, update.metrics.total_ms
 
 
 def _next_chunk_size(
@@ -678,6 +806,10 @@ def _run_diagnostics(metrics_path: Path, events_path: Path) -> None:
     print(f"p50 total: {metrics['p50_total_ms']:.2f} ms")
     print(f"p95 total: {metrics['p95_total_ms']:.2f} ms")
     print(f"avg total: {metrics['avg_total_ms']:.2f} ms")
+
+
+def _run_web_ui(orchestrator: AssistantOrchestrator, host: str, port: int) -> None:
+    run_web_ui_server(orchestrator=orchestrator, host=host, port=port)
 
 
 def _run_benchmark(orchestrator: AssistantOrchestrator, profile: str) -> None:
