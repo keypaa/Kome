@@ -10,17 +10,13 @@
   <main class="shell">
     <header class="hero">
       <h1>Kome Voice Lab</h1>
-      <p>Windows-friendly browser test bench with local backend streaming STT, wake-word gating, intent preview, and assistant actions.</p>
+      <p>Windows-friendly browser test bench for wake-word, live transcript, intent preview, and assistant actions.</p>
     </header>
 
     <section class="panel controls">
       <label>
         Wake word
         <input id="wakeWord" type="text" value="ok kome" />
-      </label>
-      <label>
-        Wake aliases (comma-separated)
-        <input id="wakeAliases" type="text" value="ok comme, ok com, ok paul" />
       </label>
       <label>
         Recognition language
@@ -38,7 +34,7 @@
 
     <section class="panel">
       <h2>Live Transcript</h2>
-      <p class="hint">Interim text comes from backend streaming STT. Wake gating and intent triggering are handled server-side.</p>
+      <p class="hint">Interim text updates as you speak. Final segments are wake-gated before assistant execution.</p>
       <pre id="interim" class="live"></pre>
       <pre id="final" class="live final"></pre>
     </section>

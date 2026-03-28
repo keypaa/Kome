@@ -47,11 +47,6 @@ def main() -> None:
         help="Optional wake word phrase, e.g. 'ok kome'",
     )
     parser.add_argument(
-        "--wake-aliases",
-        default="",
-        help="Optional wake-word aliases, comma-separated",
-    )
-    parser.add_argument(
         "--record-seconds",
         type=float,
         default=2.5,
@@ -214,7 +209,6 @@ def main() -> None:
             orchestrator,
             profile=args.voice_profile,
             wake_word=args.wake_word,
-            wake_aliases=args.wake_aliases,
             record_seconds=args.record_seconds,
             live_mode=args.live_mode,
             max_turns=args.max_turns,
@@ -252,7 +246,6 @@ def main() -> None:
         _run_wake_calibration(
             wake_backend=args.wake_backend,
             wake_word=args.wake_word,
-            wake_aliases=args.wake_aliases,
             wake_threshold=args.wake_threshold,
             openwakeword_model=args.openwakeword_model,
             porcupine_access_key=args.porcupine_access_key,
@@ -267,23 +260,7 @@ def main() -> None:
         return
 
     if args.mode == "web-ui":
-        _run_web_ui(
-            orchestrator=orchestrator,
-            profile=args.voice_profile,
-            wake_word=args.wake_word,
-            wake_aliases=args.wake_aliases,
-            wake_backend=args.wake_backend,
-            wake_threshold=args.wake_threshold,
-            openwakeword_model=args.openwakeword_model,
-            porcupine_access_key=args.porcupine_access_key,
-            porcupine_keyword=args.porcupine_keyword,
-            porcupine_keyword_path=args.porcupine_keyword_path,
-            stream_intent_confidence=args.stream_intent_confidence,
-            stream_min_words=args.stream_min_words,
-            stream_stability_chunks=args.stream_stability_chunks,
-            host=args.web_host,
-            port=args.web_port,
-        )
+        _run_web_ui(orchestrator=orchestrator, host=args.web_host, port=args.web_port)
         return
 
     print("Kome local assistant (text mode). Type 'exit' to quit.")
@@ -314,7 +291,6 @@ def _build_voice_loop_with_wake_backend(
     orchestrator: AssistantOrchestrator,
     profile: str,
     wake_word: str,
-    wake_aliases: str,
     wake_backend: str,
     wake_threshold: float,
     openwakeword_model: str,
@@ -323,21 +299,20 @@ def _build_voice_loop_with_wake_backend(
     porcupine_keyword_path: str,
 ) -> VoiceLoop:
     backends = build_voice_backends(profile)
-    wake_phrases = _parse_wake_phrases(primary=wake_word, aliases=wake_aliases)
-    text_detector = PhraseWakeWordDetector(wake_phrases) if wake_phrases else None
+    text_detector = PhraseWakeWordDetector([wake_word]) if wake_word.strip() else None
     audio_detector = None
 
-    if wake_phrases and wake_backend == "openwakeword":
+    if wake_word.strip() and wake_backend == "openwakeword":
         model_path = Path(openwakeword_model) if openwakeword_model.strip() else None
         try:
             audio_detector = OpenWakeWordAudioDetector(
-                wake_phrases=wake_phrases,
+                wake_phrases=[wake_word],
                 threshold=wake_threshold,
                 custom_model_path=model_path,
             )
         except RuntimeError as exc:
             print(f"assistant> openWakeWord unavailable ({exc}), fallback to phrase wake-word")
-    if wake_phrases and wake_backend == "porcupine":
+    if wake_word.strip() and wake_backend == "porcupine":
         key_path = Path(porcupine_keyword_path) if porcupine_keyword_path.strip() else None
         try:
             audio_detector = PorcupineAudioDetector(
@@ -382,7 +357,6 @@ def _run_voice_live_loop(
     orchestrator: AssistantOrchestrator,
     profile: str,
     wake_word: str,
-    wake_aliases: str,
     record_seconds: float,
     live_mode: str,
     max_turns: int,
@@ -411,7 +385,6 @@ def _run_voice_live_loop(
         orchestrator=orchestrator,
         profile=profile,
         wake_word=wake_word,
-        wake_aliases=wake_aliases,
         wake_backend=wake_backend,
         wake_threshold=wake_threshold,
         openwakeword_model=openwakeword_model,
@@ -777,7 +750,6 @@ def _run_eval(orchestrator: AssistantOrchestrator, profile: str) -> None:
 def _run_wake_calibration(
     wake_backend: str,
     wake_word: str,
-    wake_aliases: str,
     wake_threshold: float,
     openwakeword_model: str,
     porcupine_access_key: str,
@@ -796,11 +768,8 @@ def _run_wake_calibration(
     try:
         if wake_backend == "openwakeword":
             model_path = Path(openwakeword_model) if openwakeword_model.strip() else None
-            wake_phrases = _parse_wake_phrases(primary=wake_word, aliases=wake_aliases)
-            if not wake_phrases:
-                wake_phrases = ["ok kome"]
             detector = OpenWakeWordAudioDetector(
-                wake_phrases=wake_phrases,
+                wake_phrases=[wake_word or "ok kome"],
                 threshold=wake_threshold,
                 custom_model_path=model_path,
             )
@@ -839,64 +808,8 @@ def _run_diagnostics(metrics_path: Path, events_path: Path) -> None:
     print(f"avg total: {metrics['avg_total_ms']:.2f} ms")
 
 
-def _run_web_ui(
-    orchestrator: AssistantOrchestrator,
-    profile: str,
-    wake_word: str,
-    wake_aliases: str,
-    wake_backend: str,
-    wake_threshold: float,
-    openwakeword_model: str,
-    porcupine_access_key: str,
-    porcupine_keyword: str,
-    porcupine_keyword_path: str,
-    stream_intent_confidence: float,
-    stream_min_words: int,
-    stream_stability_chunks: int,
-    host: str,
-    port: int,
-) -> None:
-    voice_loop = _build_voice_loop_with_wake_backend(
-        orchestrator=orchestrator,
-        profile=profile,
-        wake_word=wake_word,
-        wake_aliases=wake_aliases,
-        wake_backend=wake_backend,
-        wake_threshold=wake_threshold,
-        openwakeword_model=openwakeword_model,
-        porcupine_access_key=porcupine_access_key,
-        porcupine_keyword=porcupine_keyword,
-        porcupine_keyword_path=porcupine_keyword_path,
-    )
-    run_web_ui_server(
-        orchestrator=orchestrator,
-        voice_loop=voice_loop,
-        host=host,
-        port=port,
-        stream_intent_confidence=stream_intent_confidence,
-        stream_min_words=stream_min_words,
-        stream_stability_chunks=stream_stability_chunks,
-    )
-
-
-def _parse_wake_phrases(primary: str, aliases: str) -> list[str]:
-    phrases = []
-    if primary.strip():
-        phrases.append(primary.strip())
-    if aliases.strip():
-        for item in aliases.split(","):
-            candidate = item.strip()
-            if candidate:
-                phrases.append(candidate)
-    unique: list[str] = []
-    seen: set[str] = set()
-    for item in phrases:
-        key = item.lower()
-        if key in seen:
-            continue
-        seen.add(key)
-        unique.append(item)
-    return unique
+def _run_web_ui(orchestrator: AssistantOrchestrator, host: str, port: int) -> None:
+    run_web_ui_server(orchestrator=orchestrator, host=host, port=port)
 
 
 def _run_benchmark(orchestrator: AssistantOrchestrator, profile: str) -> None:

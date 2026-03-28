@@ -43,11 +43,7 @@ class MockSTTEngine(STTEngine):
     """
 
     def transcribe(self, audio_bytes: bytes) -> TranscriptionResult:
-        if _looks_like_wav(audio_bytes):
-            # Mock backend cannot transcribe raw audio; keep output empty.
-            return TranscriptionResult(text="", language="fr", confidence=0.0)
-
-        text = _safe_decode_text(audio_bytes)
+        text = audio_bytes.decode("utf-8", errors="ignore").strip()
         if not text:
             return TranscriptionResult(text="", language="fr", confidence=0.0)
 
@@ -63,12 +59,7 @@ class MockStreamingSTTEngine(MockSTTEngine, StreamingSTTEngine):
         self._buffer: list[str] = []
 
     def transcribe_stream_chunk(self, audio_bytes: bytes, is_final: bool = False) -> TranscriptionResult:
-        if _looks_like_wav(audio_bytes):
-            if is_final:
-                self._buffer.clear()
-            return TranscriptionResult(text="", language="fr", confidence=0.0)
-
-        chunk = _safe_decode_text(audio_bytes)
+        chunk = audio_bytes.decode("utf-8", errors="ignore").strip()
         if chunk:
             self._buffer.append(chunk)
         if not is_final:
@@ -121,22 +112,12 @@ class FasterWhisperSTTEngine(STTEngine):
             from faster_whisper import WhisperModel
         except ImportError as exc:
             raise RuntimeError("faster-whisper is not installed") from exc
-        except Exception as exc:  # noqa: BLE001
-            message = str(exc)
-            if "bloque" in message.lower() or "blocked" in message.lower():
-                raise RuntimeError(
-                    "faster-whisper backend blocked by application control policy (av/ffmpeg DLL)."
-                ) from exc
-            raise RuntimeError(f"faster-whisper import failed: {message}") from exc
 
-        try:
-            self._model = WhisperModel(
-                self.model_size_or_path,
-                device=self.device,
-                compute_type=self.compute_type,
-            )
-        except Exception as exc:  # noqa: BLE001
-            raise RuntimeError(f"faster-whisper model initialization failed: {exc}") from exc
+        self._model = WhisperModel(
+            self.model_size_or_path,
+            device=self.device,
+            compute_type=self.compute_type,
+        )
         return self._model
 
 
@@ -153,32 +134,21 @@ class FasterWhisperStreamingSTTEngine(FasterWhisperSTTEngine, StreamingSTTEngine
         device: str = "cpu",
         compute_type: str = "int8",
         max_chunks: int = 6,
-        decode_stride_chunks: int = 2,
     ) -> None:
         super().__init__(model_size_or_path=model_size_or_path, device=device, compute_type=compute_type)
         self.max_chunks = max_chunks
-        self.decode_stride_chunks = max(1, int(decode_stride_chunks))
         self._chunk_buffer: list[bytes] = []
-        self._chunks_since_decode = 0
-        self._last_result = TranscriptionResult(text="", language="fr", confidence=0.0)
 
     def transcribe_stream_chunk(self, audio_bytes: bytes, is_final: bool = False) -> TranscriptionResult:
         if audio_bytes:
             self._chunk_buffer.append(audio_bytes)
-            self._chunks_since_decode += 1
         if len(self._chunk_buffer) > self.max_chunks:
             self._chunk_buffer = self._chunk_buffer[-self.max_chunks :]
 
-        if not is_final and self._chunks_since_decode < self.decode_stride_chunks:
-            return self._last_result
-
         merged = _merge_wav_chunks(self._chunk_buffer)
         result = self.transcribe(merged)
-        self._last_result = result
-        self._chunks_since_decode = 0
         if is_final:
             self._chunk_buffer.clear()
-            self._last_result = TranscriptionResult(text="", language="fr", confidence=0.0)
         return result
 
 
@@ -231,18 +201,3 @@ def _wav_bytes_to_float32(audio_bytes: bytes) -> Any:
     if channels > 1:
         waveform = waveform.reshape(-1, channels).mean(axis=1)
     return waveform
-
-
-def _looks_like_wav(audio_bytes: bytes) -> bool:
-    return len(audio_bytes) >= 12 and audio_bytes.startswith(b"RIFF") and audio_bytes[8:12] == b"WAVE"
-
-
-def _safe_decode_text(audio_bytes: bytes) -> str:
-    decoded = audio_bytes.decode("utf-8", errors="ignore").strip()
-    if not decoded:
-        return ""
-    printable = sum(1 for char in decoded if char.isprintable())
-    ratio = printable / max(len(decoded), 1)
-    if ratio < 0.9:
-        return ""
-    return decoded

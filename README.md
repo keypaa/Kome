@@ -47,13 +47,6 @@ kome --mode web-ui --web-host 127.0.0.1 --web-port 8765
 ```
 
 Then open `http://127.0.0.1:8765` in Edge/Chrome.
-This mode streams local microphone audio chunks to backend STT/wake logic (no browser SpeechRecognition dependency).
-
-Use wake aliases to improve recognition robustness for homophones:
-
-```powershell
-kome --mode web-ui --voice-profile local --wake-word "ok kome" --wake-aliases "ok comme,ok com,ok paul"
-```
 
 In continuous mode, microphone capture uses chunk streaming (callback-based audio input).
 Adaptive chunk sizing is enabled by default in continuous mode.
@@ -209,7 +202,6 @@ Notes:
 - If faster-whisper or Piper model/binary are not available, local profile falls back to mock adapters.
 - If microphone or playback optional dependencies are missing, voice-live mode reports a local setup error and exits safely.
 - Continuous voice-live now supports streaming STT chunk handling with early intent trigger before final transcript.
-- Web UI mode now supports backend-local streaming audio chunks into STT with server-side wake gating and early intent triggers.
 - If openwakeword is unavailable and `--wake-backend openwakeword` is requested, runtime falls back to phrase wake-word.
 - If Porcupine is unavailable and `--wake-backend porcupine` is requested, runtime falls back to phrase wake-word.
 - In voice-live mode, barge-in is enabled by default: user speech during playback interrupts TTS.

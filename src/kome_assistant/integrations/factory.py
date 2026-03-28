@@ -63,15 +63,11 @@ def _build_local_stt_or_mock() -> STTEngine:
         model_name = os.getenv("KOME_STT_MODEL", "small")
         device = os.getenv("KOME_STT_DEVICE", "cpu")
         compute_type = os.getenv("KOME_STT_COMPUTE_TYPE", "int8")
-        max_chunks = int(os.getenv("KOME_STT_STREAM_MAX_CHUNKS", "6"))
-        decode_stride = int(os.getenv("KOME_STT_STREAM_DECODE_STRIDE", "2"))
         if streaming:
             return FasterWhisperStreamingSTTEngine(
                 model_size_or_path=model_name,
                 device=device,
                 compute_type=compute_type,
-                max_chunks=max_chunks,
-                decode_stride_chunks=decode_stride,
             )
         return FasterWhisperSTTEngine(
             model_size_or_path=model_name,
