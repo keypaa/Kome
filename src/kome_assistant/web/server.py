@@ -52,7 +52,11 @@ def run_web_ui_server(
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
-            self.wfile.write(body)
+            try:
+                self.wfile.write(body)
+            except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
+                # Browser/client disconnected while response was being written.
+                return
 
         def _write_file(self, path: Path, content_type: str) -> None:
             if not path.exists() or not path.is_file():
@@ -165,28 +169,54 @@ def run_web_ui_server(
                     self._write_json(400, {"ok": False, "error": "Invalid base64 audio payload"})
                     return
 
-                with app.lock:
-                    update = app.voice_loop.handle_audio_stream_chunk_with_metrics(
-                        wav_bytes,
-                        is_final=is_final,
-                        min_intent_confidence=app.stream_intent_confidence,
-                        min_words=app.stream_min_words,
-                        stability_chunks=app.stream_stability_chunks,
+                try:
+                    with app.lock:
+                        update = app.voice_loop.handle_audio_stream_chunk_with_metrics(
+                            wav_bytes,
+                            is_final=is_final,
+                            min_intent_confidence=app.stream_intent_confidence,
+                            min_words=app.stream_min_words,
+                            stability_chunks=app.stream_stability_chunks,
+                        )
+                except Exception as exc:  # noqa: BLE001
+                    with app.lock:
+                        app.voice_loop.reset_stream_state()
+                    self._write_json(
+                        503,
+                        {
+                            "ok": False,
+                            "error": f"stream backend error: {exc}",
+                            "error_code": "STREAM_BACKEND_ERROR",
+                        },
                     )
+                    return
 
                 self._write_json(200, _stream_update_payload(update))
                 return
 
             if route == "/api/stream/stop":
-                with app.lock:
-                    update = app.voice_loop.handle_audio_stream_chunk_with_metrics(
-                        b"",
-                        is_final=True,
-                        min_intent_confidence=app.stream_intent_confidence,
-                        min_words=app.stream_min_words,
-                        stability_chunks=app.stream_stability_chunks,
+                try:
+                    with app.lock:
+                        update = app.voice_loop.handle_audio_stream_chunk_with_metrics(
+                            b"",
+                            is_final=True,
+                            min_intent_confidence=app.stream_intent_confidence,
+                            min_words=app.stream_min_words,
+                            stability_chunks=app.stream_stability_chunks,
+                        )
+                        app.voice_loop.reset_stream_state()
+                except Exception as exc:  # noqa: BLE001
+                    with app.lock:
+                        app.voice_loop.reset_stream_state()
+                    self._write_json(
+                        503,
+                        {
+                            "ok": False,
+                            "error": f"stream backend stop error: {exc}",
+                            "error_code": "STREAM_BACKEND_ERROR",
+                        },
                     )
-                    app.voice_loop.reset_stream_state()
+                    return
                 self._write_json(200, _stream_update_payload(update))
                 return
 

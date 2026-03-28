@@ -10,7 +10,7 @@ const intentEl = document.getElementById('intent');
 const historyEl = document.getElementById('history');
 
 const TARGET_SAMPLE_RATE = 16000;
-const STREAM_CHUNK_SECONDS = 0.6;
+const STREAM_CHUNK_SECONDS = 0.8;
 
 let running = false;
 let mediaStream = null;
@@ -21,6 +21,7 @@ let pendingPromise = Promise.resolve();
 let pcmBuffer = new Float32Array(0);
 let streamingEnabled = false;
 let backendConfig = { mockStt: false, sttBackend: 'unknown' };
+let pendingChunkRequests = 0;
 
 function setStatus(text, isError = false) {
   statusEl.textContent = text;
@@ -182,19 +183,30 @@ function handleStreamResponse(data) {
 }
 
 function queueChunkSend(wavBytes, isFinal = false) {
+  if (!isFinal && pendingChunkRequests >= 2) {
+    // Drop intermediate chunks when backend is lagging; keep stream responsive.
+    return;
+  }
+
   const payload = {
     wav_base64: wavBytes ? toBase64(wavBytes) : '',
     is_final: isFinal,
   };
 
   pendingPromise = pendingPromise
-    .then(() => fetchJson('/api/stream/chunk', payload))
+    .then(() => {
+      pendingChunkRequests += 1;
+      return fetchJson('/api/stream/chunk', payload);
+    })
     .then((data) => {
       handleStreamResponse(data);
     })
     .catch((error) => {
       appendHistory('error', `stream chunk error: ${error}`);
       setStatus('Streaming error', true);
+    })
+    .finally(() => {
+      pendingChunkRequests = Math.max(0, pendingChunkRequests - 1);
     });
 }
 
