@@ -13,7 +13,15 @@
 - `core/router.py`: Deterministic intent extraction.
 - `core/orchestrator.py`: End-to-end turn orchestration.
 - `tools/registry.py`: Tool registration, validation, execution.
+- `memory/state_store.py`: SQLite-backed local state persistence.
 - `integrations/*`: Model/backend adapter stubs.
+
+## Implemented guardrails
+
+- Tool whitelist in registry.
+- Required argument checks per tool.
+- Argument validator checks (bounds/enums/non-empty constraints).
+- Unknown or invalid tool invocations return deterministic denials.
 
 ## Migration path
 

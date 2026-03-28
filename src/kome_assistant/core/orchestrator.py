@@ -26,7 +26,7 @@ class AssistantOrchestrator:
                 language="en",
             )
 
-        if intent.name in {"ask_time", "set_timer", "toggle_light", "search_docs", "calendar_today"}:
+        if intent.name in {"ask_time", "set_timer", "toggle_light", "search_docs", "calendar_today", "list_timers"}:
             tool_name, args = self._intent_to_tool(intent)
             result = self.tools.execute(tool_name, args)
             if intent.language == "fr":
@@ -54,6 +54,8 @@ class AssistantOrchestrator:
             return "search_docs", {"query": str(intent.slots.get("query", ""))}
         if intent.name == "calendar_today":
             return "calendar_today", {}
+        if intent.name == "list_timers":
+            return "list_timers", {}
         return "noop", {}
 
     def _translate_response(self, message: str, language: str) -> str:
@@ -65,6 +67,8 @@ class AssistantOrchestrator:
                 .replace("allumee", "on")
                 .replace("eteinte", "off")
                 .replace("Aucun evenement", "No event")
+                .replace("Aucun minuteur actif", "No active timers")
+                .replace("Minuteurs actifs", "Active timers")
                 .replace("Recherche locale", "Local search")
             )
         return message

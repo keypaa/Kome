@@ -6,7 +6,8 @@ Local-first assistant brain for a custom smart clock.
 
 - Fully local text-first MVP pipeline (no cloud API usage)
 - Deterministic intent routing for French-first commands
-- Tool execution framework with safe whitelist
+- Tool execution framework with whitelist and argument guardrails
+- SQLite local state persistence for timers
 - Interactive CLI loop for end-to-end testing
 
 ## Architecture (current MVP baseline)
@@ -44,6 +45,7 @@ Examples:
 - `quelle heure est-il`
 - `allume la lumiere du salon`
 - `search docs raspberry pi`
+- `liste minuteurs`
 
 ## GitHub workflow
 

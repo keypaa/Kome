@@ -14,3 +14,10 @@ def test_detect_english_time_request() -> None:
     intent = router.route("what time is it")
     assert intent.name == "ask_time"
     assert intent.language == "en"
+
+
+def test_detect_list_timers_request() -> None:
+    router = IntentRouter()
+    intent = router.route("liste minuteurs")
+    assert intent.name == "list_timers"
+    assert intent.language == "fr"

@@ -47,6 +47,9 @@ class IntentRouter:
         if self._is_calendar_request(normalized):
             return Intent(name="calendar_today", language=language, confidence=0.8)
 
+        if self._is_list_timers_request(normalized):
+            return Intent(name="list_timers", language=language, confidence=0.8)
+
         return Intent(name="fallback", language=language, confidence=0.1)
 
     def _detect_language(self, text: str) -> str:
@@ -107,3 +110,7 @@ class IntentRouter:
     def _is_calendar_request(self, text: str) -> bool:
         low = text.lower()
         return any(token in low for token in ["agenda", "calendrier", "calendar", "events", "evenement", "événement"])
+
+    def _is_list_timers_request(self, text: str) -> bool:
+        low = text.lower()
+        return any(token in low for token in ["minuteurs", "timers", "liste minuteurs", "list timers"])

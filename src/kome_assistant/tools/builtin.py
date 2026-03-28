@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from kome_assistant.core.contracts import ToolResult
+from kome_assistant.memory.state_store import StateStore
 
 
 def get_time() -> ToolResult:
@@ -10,10 +11,15 @@ def get_time() -> ToolResult:
     return ToolResult(ok=True, message=f"Heure locale: {now}")
 
 
-def set_timer(minutes: int) -> ToolResult:
+def set_timer(minutes: int, store: StateStore) -> ToolResult:
     if minutes <= 0 or minutes > 180:
         return ToolResult(ok=False, message="Minuteur invalide")
-    return ToolResult(ok=True, message=f"Minuteur defini pour {minutes} minute(s)", payload={"minutes": minutes})
+    timer_id = store.add_timer(minutes=minutes)
+    return ToolResult(
+        ok=True,
+        message=f"Minuteur defini pour {minutes} minute(s)",
+        payload={"minutes": minutes, "timer_id": timer_id},
+    )
 
 
 def toggle_light(room: str, state: str) -> ToolResult:
@@ -29,3 +35,12 @@ def search_docs(query: str) -> ToolResult:
 
 def calendar_today() -> ToolResult:
     return ToolResult(ok=True, message="Aucun evenement aujourd'hui")
+
+
+def list_timers(store: StateStore) -> ToolResult:
+    timers = store.list_active_timers()
+    if not timers:
+        return ToolResult(ok=True, message="Aucun minuteur actif", payload={"timers": []})
+
+    formatted = ", ".join(f"#{item['id']} ({item['minutes']} min)" for item in timers)
+    return ToolResult(ok=True, message=f"Minuteurs actifs: {formatted}", payload={"timers": timers})
