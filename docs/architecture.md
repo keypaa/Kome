@@ -42,6 +42,7 @@
 - `integrations/factory.py`: profile/env-based backend selection with graceful fallback to mocks.
 - `integrations/audio_input.py`: live microphone capture adapter with callback-based chunk streaming (sounddevice).
 - `integrations/audio_output.py`: optional playback adapter (simpleaudio).
+- `integrations/audio_devices.py`: local device discovery helper for input/output selection.
 - `integrations/wake_word.py`: phrase-level wake-word gating for transcribed text.
 - `integrations/wake_word.py`: optional openWakeWord audio gate before STT.
 - CLI mode `--mode voice-sim` runs full voice orchestration path locally.
@@ -49,3 +50,4 @@
 - Live voice playback supports barge-in interruption using VAD monitoring during TTS.
 - Continuous live mode supports adaptive chunk size tuning controls.
 - Audio wake-word confidence can be exposed in runtime metrics/logs.
+- CLI supports explicit input/output device selection and output backend choice.

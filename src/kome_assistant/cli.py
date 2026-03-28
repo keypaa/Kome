@@ -2,13 +2,21 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+from typing import cast
 
 from kome_assistant.core.benchmark import run_voice_benchmark
 from kome_assistant.core.orchestrator import AssistantOrchestrator
 from kome_assistant.core.router import IntentRouter
 from kome_assistant.core.voice_loop import VoiceLoop
 from kome_assistant.integrations.audio_input import MicrophoneAudioInput
-from kome_assistant.integrations.audio_output import NullAudioOutput, PlaybackHandle, SimpleAudioOutput
+from kome_assistant.integrations.audio_devices import list_audio_devices
+from kome_assistant.integrations.audio_output import (
+    AudioOutput,
+    NullAudioOutput,
+    PlaybackHandle,
+    SimpleAudioOutput,
+    SoundDeviceAudioOutput,
+)
 from kome_assistant.integrations.factory import build_voice_backends
 from kome_assistant.integrations.wake_word import OpenWakeWordAudioDetector, PhraseWakeWordDetector
 from kome_assistant.tools.registry import default_tool_registry
@@ -74,6 +82,27 @@ def main() -> None:
         help="Disable interrupting TTS playback when user speech is detected",
     )
     parser.add_argument(
+        "--list-audio-devices",
+        action="store_true",
+        help="List local audio devices and exit",
+    )
+    parser.add_argument(
+        "--input-device",
+        default="",
+        help="Optional input device id or name for microphone capture",
+    )
+    parser.add_argument(
+        "--output-device",
+        default="",
+        help="Optional output device id or name for playback (sounddevice backend)",
+    )
+    parser.add_argument(
+        "--audio-output-backend",
+        choices=("auto", "simpleaudio", "sounddevice"),
+        default="auto",
+        help="Playback backend selection",
+    )
+    parser.add_argument(
         "--no-adaptive-chunk",
         action="store_true",
         help="Disable adaptive chunk sizing in continuous live mode",
@@ -97,6 +126,11 @@ def main() -> None:
         help="Step used by adaptive chunk controller",
     )
     args = parser.parse_args()
+
+    if args.list_audio_devices:
+        for line in list_audio_devices():
+            print(line)
+        return
 
     router = IntentRouter()
     tools = default_tool_registry(data_dir=Path("data"))
@@ -122,6 +156,9 @@ def main() -> None:
             chunk_min_seconds=args.chunk_min_seconds,
             chunk_max_seconds=args.chunk_max_seconds,
             chunk_step_seconds=args.chunk_step_seconds,
+            input_device=_parse_device_arg(args.input_device),
+            output_device=_parse_device_arg(args.output_device),
+            audio_output_backend=args.audio_output_backend,
         )
         return
 
@@ -221,6 +258,9 @@ def _run_voice_live_loop(
     chunk_min_seconds: float,
     chunk_max_seconds: float,
     chunk_step_seconds: float,
+    input_device: str | int | None,
+    output_device: str | int | None,
+    audio_output_backend: str,
 ) -> None:
     backends = build_voice_backends(profile)
     voice_loop = _build_voice_loop_with_wake_backend(
@@ -231,8 +271,8 @@ def _run_voice_live_loop(
         wake_threshold=wake_threshold,
         openwakeword_model=openwakeword_model,
     )
-    audio_in = MicrophoneAudioInput(channels=1)
-    audio_out = SimpleAudioOutput()
+    audio_in = MicrophoneAudioInput(channels=1, input_device=input_device)
+    audio_out = _build_audio_output(backend=audio_output_backend, output_device=output_device)
 
     print(f"Kome local assistant (voice-live mode={live_mode}, profile={backends.selected_profile}).")
     if wake_word.strip():
@@ -314,7 +354,7 @@ def _run_voice_live_loop(
 def _run_single_live_turn(
     voice_loop: VoiceLoop,
     audio_in: MicrophoneAudioInput,
-    audio_out: SimpleAudioOutput,
+    audio_out: AudioOutput,
     record_seconds: float,
     wav_audio: bytes | None = None,
     enable_barge_in: bool = True,
@@ -377,7 +417,7 @@ def _next_chunk_size(
 
 def _play_assistant_audio(
     wav_bytes: bytes,
-    audio_out: SimpleAudioOutput,
+    audio_out: AudioOutput,
     audio_in: MicrophoneAudioInput,
     voice_loop: VoiceLoop,
     enable_barge_in: bool,
@@ -414,6 +454,27 @@ def _play_with_barge_in(
 
     handle.wait_done()
     return True
+
+
+def _parse_device_arg(raw_value: str) -> str | int | None:
+    value = raw_value.strip()
+    if not value:
+        return None
+    if value.isdigit():
+        return int(value)
+    return value
+
+
+def _build_audio_output(backend: str, output_device: str | int | None) -> AudioOutput:
+    if backend == "simpleaudio":
+        return SimpleAudioOutput()
+    if backend == "sounddevice":
+        return SoundDeviceAudioOutput(output_device=output_device)
+
+    # auto
+    if output_device is not None:
+        return SoundDeviceAudioOutput(output_device=output_device)
+    return cast(AudioOutput, SimpleAudioOutput())
 
 
 def _run_benchmark(orchestrator: AssistantOrchestrator, profile: str) -> None:

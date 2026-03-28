@@ -114,6 +114,18 @@ Tune adaptive chunk bounds:
 kome --mode voice-live --live-mode continuous --chunk-min-seconds 0.8 --chunk-max-seconds 3.0 --chunk-step-seconds 0.2
 ```
 
+List available local audio devices:
+
+```powershell
+kome --list-audio-devices
+```
+
+Select explicit input/output devices (ids from list):
+
+```powershell
+kome --mode voice-live --input-device 1 --output-device 3 --audio-output-backend sounddevice
+```
+
 Disable barge-in interruption (default is enabled):
 
 ```powershell
@@ -153,6 +165,7 @@ Notes:
 - If openwakeword is unavailable and `--wake-backend openwakeword` is requested, runtime falls back to phrase wake-word.
 - In voice-live mode, barge-in is enabled by default: user speech during playback interrupts TTS.
 - When openWakeWord backend is active, runtime logs wake-word confidence per turn.
+- Output backend can be selected explicitly (`simpleaudio` or `sounddevice`).
 
 Type a command in French or English.
 

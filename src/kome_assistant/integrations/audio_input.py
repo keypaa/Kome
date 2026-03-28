@@ -24,8 +24,9 @@ class AudioInput:
 class MicrophoneAudioInput(AudioInput):
     """Microphone capture backend using optional sounddevice package."""
 
-    def __init__(self, channels: int = 1) -> None:
+    def __init__(self, channels: int = 1, input_device: str | int | None = None) -> None:
         self.channels = channels
+        self.input_device = input_device
 
     def capture_wav(self, duration_s: float, sample_rate_hz: int = 16000) -> bytes:
         if duration_s <= 0:
@@ -41,6 +42,7 @@ class MicrophoneAudioInput(AudioInput):
             samplerate=sample_rate_hz,
             channels=self.channels,
             dtype="int16",
+            device=self.input_device,
             blocking=True,
         )
         pcm = recording.tobytes()
@@ -82,6 +84,7 @@ class MicrophoneAudioInput(AudioInput):
             samplerate=sample_rate_hz,
             channels=self.channels,
             dtype="int16",
+            device=self.input_device,
             blocksize=frames_per_chunk,
             callback=callback,
         ):
