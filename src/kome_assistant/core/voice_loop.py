@@ -26,6 +26,7 @@ class VoiceTurnMetrics:
     orchestration_ms: float
     tts_ms: float
     total_ms: float
+    audio_wake_confidence: float | None = None
 
 
 @dataclass(slots=True)
@@ -48,6 +49,7 @@ class VoiceLoop:
 
     def handle_audio_turn_with_metrics(self, audio_bytes: bytes) -> VoiceTurnResultWithMetrics:
         start_total = perf_counter()
+        audio_wake_confidence: float | None = None
 
         start_vad = perf_counter()
         if not self.vad.has_speech(audio_bytes):
@@ -67,6 +69,7 @@ class VoiceLoop:
 
         if self.audio_wake_word_detector is not None:
             audio_decision = self.audio_wake_word_detector.evaluate_audio(audio_bytes)
+            audio_wake_confidence = audio_decision.confidence
             if not audio_decision.triggered:
                 total_ms = (perf_counter() - start_total) * 1000
                 return VoiceTurnResultWithMetrics(
@@ -77,6 +80,7 @@ class VoiceLoop:
                         orchestration_ms=0.0,
                         tts_ms=0.0,
                         total_ms=total_ms,
+                        audio_wake_confidence=audio_wake_confidence,
                     ),
                 )
 
@@ -93,6 +97,7 @@ class VoiceLoop:
                     orchestration_ms=0.0,
                     tts_ms=0.0,
                     total_ms=total_ms,
+                    audio_wake_confidence=audio_wake_confidence,
                 ),
             )
 
@@ -109,6 +114,7 @@ class VoiceLoop:
                         orchestration_ms=0.0,
                         tts_ms=0.0,
                         total_ms=total_ms,
+                        audio_wake_confidence=audio_wake_confidence,
                     ),
                 )
             processed_text = decision.text_without_wake_word
@@ -122,6 +128,7 @@ class VoiceLoop:
                         orchestration_ms=0.0,
                         tts_ms=0.0,
                         total_ms=total_ms,
+                        audio_wake_confidence=audio_wake_confidence,
                     ),
                 )
 
@@ -151,5 +158,6 @@ class VoiceLoop:
                 orchestration_ms=(end_orchestration - start_orchestration) * 1000,
                 tts_ms=(end_tts - start_tts) * 1000,
                 total_ms=total_ms,
+                audio_wake_confidence=audio_wake_confidence,
             ),
         )

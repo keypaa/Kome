@@ -41,6 +41,7 @@ kome --mode voice-live --voice-profile local --live-mode continuous --record-sec
 ```
 
 In continuous mode, microphone capture uses chunk streaming (callback-based audio input).
+Adaptive chunk sizing is enabled by default in continuous mode.
 
 Latency benchmark mode:
 
@@ -107,10 +108,22 @@ Optional openWakeWord audio gate:
 kome --mode voice-live --voice-profile local --wake-word "ok kome" --wake-backend openwakeword --wake-threshold 0.5
 ```
 
+Tune adaptive chunk bounds:
+
+```powershell
+kome --mode voice-live --live-mode continuous --chunk-min-seconds 0.8 --chunk-max-seconds 3.0 --chunk-step-seconds 0.2
+```
+
 Disable barge-in interruption (default is enabled):
 
 ```powershell
 kome --mode voice-live --no-barge-in
+```
+
+Disable adaptive chunk tuning:
+
+```powershell
+kome --mode voice-live --no-adaptive-chunk
 ```
 
 Manual capture mode (press Enter each turn):
@@ -139,6 +152,7 @@ Notes:
 - If microphone or playback optional dependencies are missing, voice-live mode reports a local setup error and exits safely.
 - If openwakeword is unavailable and `--wake-backend openwakeword` is requested, runtime falls back to phrase wake-word.
 - In voice-live mode, barge-in is enabled by default: user speech during playback interrupts TTS.
+- When openWakeWord backend is active, runtime logs wake-word confidence per turn.
 
 Type a command in French or English.
 
