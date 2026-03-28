@@ -67,6 +67,32 @@ Voice backend profile selection:
 kome --mode voice-sim --voice-profile local
 ```
 
+Enable real local STT/TTS backends for local profile:
+
+```powershell
+$env:KOME_STT_MODE="faster-whisper"
+$env:KOME_STT_MODEL="small"
+$env:KOME_STT_DEVICE="cpu"
+$env:KOME_STT_COMPUTE_TYPE="int8"
+
+$env:KOME_TTS_MODE="piper1-gpl"
+$env:KOME_PIPER_BIN="piper"
+$env:KOME_PIPER_MODEL="C:\models\fr_FR-upmc-medium.onnx"
+kome --mode voice-sim --voice-profile local
+```
+
+Install optional Python dependencies for real STT adapter:
+
+```powershell
+pip install -e .[voice]
+```
+
+Notes:
+
+- The maintained Piper project is piper1-gpl.
+- The TTS adapter executes a local piper-compatible binary via subprocess.
+- If faster-whisper or Piper model/binary are not available, local profile falls back to mock adapters.
+
 Type a command in French or English.
 
 Examples:
@@ -96,6 +122,6 @@ git push -u origin main
 
 ## Next implementation goals
 
-- Replace local-profile mock STT with faster-whisper backend
-- Replace local-profile mock TTS with Piper runtime and audio playback
-- Integrate wake-word + streaming microphone capture
+- Integrate streaming microphone capture to feed WAV frames into real STT
+- Add wake-word stage before VAD/STT pipeline
+- Add audio playback output for Piper-generated WAV responses

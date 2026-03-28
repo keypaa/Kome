@@ -37,4 +37,7 @@
 - `MockVADEngine`: speech gate for simulated audio turns.
 - `MockSTTEngine`: decodes UTF-8 mock audio bytes into text for integration testing.
 - `MockTTSEngine`: emits byte payload to validate synthesis flow without runtime audio dependencies.
+- `FasterWhisperSTTEngine`: local optional adapter (lazy-loaded model).
+- `PiperExternalTTSEngine`: local subprocess adapter for piper-compatible binaries (including Piper1-GPL).
+- `integrations/factory.py`: profile/env-based backend selection with graceful fallback to mocks.
 - CLI mode `--mode voice-sim` runs full voice orchestration path locally.
