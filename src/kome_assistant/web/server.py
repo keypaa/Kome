@@ -1,22 +1,47 @@
 from __future__ import annotations
 
+import base64
 import json
+from binascii import Error as BinasciiError
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from threading import Lock
 from urllib.parse import urlparse
 
 from kome_assistant.core.orchestrator import AssistantOrchestrator
+from kome_assistant.core.voice_loop import StreamingVoiceUpdate, VoiceLoop
 
 
 @dataclass(slots=True)
 class WebUiApp:
     orchestrator: AssistantOrchestrator
+    voice_loop: VoiceLoop
     static_dir: Path
+    stream_intent_confidence: float
+    stream_min_words: int
+    stream_stability_chunks: int
+    lock: Lock
 
 
-def run_web_ui_server(orchestrator: AssistantOrchestrator, host: str = "127.0.0.1", port: int = 8765) -> None:
-    app = WebUiApp(orchestrator=orchestrator, static_dir=Path(__file__).parent / "static")
+def run_web_ui_server(
+    orchestrator: AssistantOrchestrator,
+    voice_loop: VoiceLoop,
+    host: str = "127.0.0.1",
+    port: int = 8765,
+    stream_intent_confidence: float = 0.75,
+    stream_min_words: int = 2,
+    stream_stability_chunks: int = 2,
+) -> None:
+    app = WebUiApp(
+        orchestrator=orchestrator,
+        voice_loop=voice_loop,
+        static_dir=Path(__file__).parent / "static",
+        stream_intent_confidence=stream_intent_confidence,
+        stream_min_words=stream_min_words,
+        stream_stability_chunks=stream_stability_chunks,
+        lock=Lock(),
+    )
 
     class Handler(BaseHTTPRequestHandler):
         def _write_json(self, status: int, payload: dict) -> None:
@@ -42,6 +67,15 @@ def run_web_ui_server(orchestrator: AssistantOrchestrator, host: str = "127.0.0.
             route = urlparse(self.path).path
             if route == "/api/health":
                 self._write_json(200, {"ok": True})
+                return
+            if route == "/api/config":
+                self._write_json(
+                    200,
+                    {
+                        "ok": True,
+                        "streaming_stt": app.voice_loop.supports_streaming_stt(),
+                    },
+                )
                 return
             if route == "/" or route == "/index.html":
                 self._write_file(app.static_dir / "index.html", "text/html; charset=utf-8")
@@ -97,6 +131,49 @@ def run_web_ui_server(orchestrator: AssistantOrchestrator, host: str = "127.0.0.
                 )
                 return
 
+            if route == "/api/stream/start":
+                with app.lock:
+                    app.voice_loop.reset_stream_state()
+                self._write_json(200, {"ok": True})
+                return
+
+            if route == "/api/stream/chunk":
+                wav_b64 = str(payload.get("wav_base64", "")).strip()
+                is_final = bool(payload.get("is_final", False))
+                if not wav_b64 and not is_final:
+                    self._write_json(400, {"ok": False, "error": "wav_base64 is required"})
+                    return
+                try:
+                    wav_bytes = base64.b64decode(wav_b64) if wav_b64 else b""
+                except (BinasciiError, ValueError):
+                    self._write_json(400, {"ok": False, "error": "Invalid base64 audio payload"})
+                    return
+
+                with app.lock:
+                    update = app.voice_loop.handle_audio_stream_chunk_with_metrics(
+                        wav_bytes,
+                        is_final=is_final,
+                        min_intent_confidence=app.stream_intent_confidence,
+                        min_words=app.stream_min_words,
+                        stability_chunks=app.stream_stability_chunks,
+                    )
+
+                self._write_json(200, _stream_update_payload(update))
+                return
+
+            if route == "/api/stream/stop":
+                with app.lock:
+                    update = app.voice_loop.handle_audio_stream_chunk_with_metrics(
+                        b"",
+                        is_final=True,
+                        min_intent_confidence=app.stream_intent_confidence,
+                        min_words=app.stream_min_words,
+                        stability_chunks=app.stream_stability_chunks,
+                    )
+                    app.voice_loop.reset_stream_state()
+                self._write_json(200, _stream_update_payload(update))
+                return
+
             self._write_json(404, {"ok": False, "error": "Unknown endpoint"})
 
         def log_message(self, format: str, *args) -> None:  # noqa: A003
@@ -112,3 +189,31 @@ def run_web_ui_server(orchestrator: AssistantOrchestrator, host: str = "127.0.0.
         print("\nbye")
     finally:
         httpd.server_close()
+
+
+def _stream_update_payload(update: StreamingVoiceUpdate) -> dict:
+    payload: dict = {
+        "ok": True,
+        "actionable": update.actionable,
+        "partial_text": update.partial_text,
+        "processed_text": update.processed_text,
+        "predicted_intent": update.predicted_intent,
+        "is_final": update.is_final,
+        "audio_wake_confidence": update.audio_wake_confidence,
+    }
+    if update.result is not None:
+        payload["result"] = {
+            "user_text": update.result.user_text,
+            "assistant_text": update.result.assistant_text,
+            "language": update.result.language,
+        }
+    if update.metrics is not None:
+        payload["metrics"] = {
+            "vad_ms": update.metrics.vad_ms,
+            "stt_ms": update.metrics.stt_ms,
+            "orchestration_ms": update.metrics.orchestration_ms,
+            "tts_ms": update.metrics.tts_ms,
+            "total_ms": update.metrics.total_ms,
+            "audio_wake_confidence": update.metrics.audio_wake_confidence,
+        }
+    return payload
